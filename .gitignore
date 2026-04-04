@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.venv/
+venv/
+env/
+
+# Frontend (source lives in web_src/)
+web_src/node_modules/
+web_src/dist/
+web_src/dist-ssr/
+web_src/*.local
+
+# Packaged add-on / zip scratch
+*.ankiaddon
+*.zip
+*_temp.zip
+
+# Local exports (PDFs, etc.) — do not commit personal decks/notes exports
+*.pdf
+
+# Stale or duplicate build tree (packaging uses /web)
+dist/
+
+# Your local papers, folders, images — do not publish
+user_files/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Env / secrets
+.env
+.env.*
