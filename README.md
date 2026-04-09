@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="AnkiPapers logo.png" alt="Anki Papers Logo" width="200"/>
+</p>
+
 # Anki Papers
 
 Write notes as **markdown papers** inside Anki and turn lines into **Basic**, **reversible**, and **cloze** cards with simple syntax—then **generate** to sync notes to your collection. One document per topic, folders, block or source editing, import/export.
@@ -93,7 +97,7 @@ Headings (`#`), lists, blockquotes, `---`, images `![alt](file)`, and inline for
 
 ## Contributing / issues
 
-Use [GitHub Issues](https://github.com/YOUR_USERNAME/YOUR_REPO/issues) for bug reports and feature ideas (replace with your repo URL after publishing).
+Use [GitHub Issues](https://github.com/ahmedbenarab/Ankipapers/issues) for bug reports and feature ideas.
 
 ## License
 

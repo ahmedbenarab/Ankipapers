@@ -21,6 +21,9 @@ web_src/*.local
 
 # Local exports (PDFs, etc.) — do not commit personal decks/notes exports
 *.pdf
+examples.md
+reddit.md
+_build.ps1
 
 # Stale or duplicate build tree (packaging uses /web)
 dist/
