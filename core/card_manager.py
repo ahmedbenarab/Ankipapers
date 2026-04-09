@@ -28,8 +28,8 @@ _MATH_BLOCK_RE = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
 _MATH_INLINE_RE = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)")
 
 
-def _md_to_html(text: str) -> str:
-    """Convert lightweight markdown to HTML for Anki note fields."""
+def _md_inline_to_html(text: str) -> str:
+    """Convert lightweight inline markdown to HTML."""
     if not text:
         return text
     r = text
@@ -41,6 +41,81 @@ def _md_to_html(text: str) -> str:
     r = _STRIKE_RE.sub(r"<s>\1</s>", r)
     r = _CODE_RE.sub(r"<code>\1</code>", r)
     return r
+
+
+def _split_md_table_row(line: str) -> List[str]:
+    raw = line.strip()
+    if raw.startswith("|"):
+        raw = raw[1:]
+    if raw.endswith("|"):
+        raw = raw[:-1]
+    return [c.strip() for c in raw.split("|")]
+
+
+def _is_md_table_separator(line: str) -> bool:
+    cells = _split_md_table_row(line)
+    if len(cells) < 2:
+        return False
+    for c in cells:
+        cc = c.strip()
+        if not cc:
+            return False
+        if not re.fullmatch(r":?-{3,}:?", cc):
+            return False
+    return True
+
+
+def _is_md_table_row(line: str) -> bool:
+    s = line.strip()
+    return s.startswith("|") and s.endswith("|") and "|" in s[1:-1]
+
+
+def _md_to_html(text: str) -> str:
+    """Convert lightweight markdown (including tables) to HTML for note fields."""
+    if not text:
+        return text
+
+    lines = text.split("\n")
+    out: List[str] = []
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        if (
+            i + 1 < n
+            and _is_md_table_row(lines[i])
+            and _is_md_table_separator(lines[i + 1])
+        ):
+            header_cells = _split_md_table_row(lines[i])
+            body_rows: List[List[str]] = []
+            j = i + 2
+            while j < n and _is_md_table_row(lines[j]):
+                body_rows.append(_split_md_table_row(lines[j]))
+                j += 1
+
+            head_html = "".join(
+                f"<th>{_md_inline_to_html(cell)}</th>" for cell in header_cells
+            )
+            body_html = "".join(
+                "<tr>"
+                + "".join(f"<td>{_md_inline_to_html(cell)}</td>" for cell in row)
+                + "</tr>"
+                for row in body_rows
+            )
+            out.append(
+                '<table class="ankipapers-md-table"><thead><tr>'
+                + head_html
+                + "</tr></thead><tbody>"
+                + body_html
+                + "</tbody></table>"
+            )
+            i = j
+            continue
+
+        out.append(_md_inline_to_html(lines[i]))
+        i += 1
+
+    return "\n".join(out)
 
 
 class AnkiEditConflictAbort(Exception):

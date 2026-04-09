@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   initBridge, listPapers, loadPaper, savePaper, createPaper, deletePaper,
   generateCards, checkAnkiEditConflicts, getDecks, createFolder, getFolders, movePaperToFolder,
+  deleteFolder, renameFolder, moveFolder,
   pickImage, pasteImage, exportPdf, exportMarkdown, importMarkdown, getSettings, saveSettings as saveSettingsBridge,
-  getMediaDir, openInBrowser, moveCardsToDeck,
+  getMediaDir, openInBrowser, moveCardsToDeck, extractPdfText, extractWebText, saveSourceLink, loadSourceLink, openSourceAtLocation,
 } from './bridge'
 import Sidebar from './components/Sidebar'
 import EditorHeader from './components/EditorHeader'
@@ -15,6 +16,60 @@ import WelcomeScreen from './components/WelcomeScreen'
 import Toast from './components/Toast'
 import Settings from './components/Settings'
 import GenerateConflictModal from './components/GenerateConflictModal'
+import TableDialog from './components/TableDialog'
+import SourcePanel from './components/SourcePanel'
+
+const BLOCK_ID_RE = /<!--ap:([0-9a-f-]{36})-->\s*$/i
+const randomId = () => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`)
+const withBlockId = (line) => BLOCK_ID_RE.test(line || '') ? line : `${line || ''} <!--ap:${randomId()}-->`
+const getBlockIdFromLine = (line) => {
+  const m = (line || '').match(BLOCK_ID_RE)
+  return m ? m[1] : null
+}
+
+function folderPathAfterRename(oldPath, newName) {
+  const p = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : ''
+  const n = newName.trim()
+  return p ? `${p}/${n}` : n
+}
+
+function folderPathAfterMove(folderPath, newParentPath) {
+  const name = folderPath.includes('/') ? folderPath.slice(folderPath.lastIndexOf('/') + 1) : folderPath
+  const p = (newParentPath || '').trim()
+  return p ? `${p}/${name}` : name
+}
+
+function mapSelectedFolderAfterRename(selected, oldPath, newPath) {
+  if (!selected) return selected
+  if (selected === oldPath) return newPath
+  if (selected.startsWith(oldPath + '/')) return newPath + selected.slice(oldPath.length)
+  return selected
+}
+
+function mapPaperFolderAfterRename(fp, oldPath, newPath) {
+  if (!fp) return fp
+  if (fp === oldPath) return newPath
+  if (fp.startsWith(oldPath + '/')) return newPath + fp.slice(oldPath.length)
+  return fp
+}
+
+function mapSelectedFolderAfterDelete(selected, deletedPath) {
+  if (!selected) return selected
+  const parent = deletedPath.includes('/') ? deletedPath.slice(0, deletedPath.lastIndexOf('/')) : ''
+  if (selected === deletedPath || selected.startsWith(deletedPath + '/')) {
+    return parent || null
+  }
+  return selected
+}
+
+function mapPaperFolderAfterDelete(fp, deletedPath) {
+  if (!fp) return fp
+  const parent = deletedPath.includes('/') ? deletedPath.slice(0, deletedPath.lastIndexOf('/')) : ''
+  if (fp === deletedPath || fp.startsWith(deletedPath + '/')) {
+    return parent
+  }
+  return fp
+}
 
 export default function App() {
   const [papers, setPapers] = useState([])
@@ -30,6 +85,10 @@ export default function App() {
   const [selectedFolder, setSelectedFolder] = useState(null)
   const [mediaDir, setMediaDir] = useState('')
   const [generateConflict, setGenerateConflict] = useState(null)
+  const [tableDialog, setTableDialog] = useState(null)
+  const [showSourcePanel, setShowSourcePanel] = useState(false)
+  const [sourcePanelWidth, setSourcePanelWidth] = useState(360)
+  const [sourceState, setSourceState] = useState({ type: 'pdf', path: '', url: '', page: 1, jumpQuote: null })
   const editorRef = useRef(null)
   const blockEditorRef = useRef(null)
 
@@ -170,7 +229,32 @@ export default function App() {
   }, [paper, settings.auto_save_interval_seconds])
 
   // ─── Format Actions ──────────────────────────────
+  const openTableDialog = useCallback((mode = 'insert', preset = null) => {
+    setTableDialog({
+      mode,
+      rows: preset?.rows || 2,
+      cols: preset?.cols || 2,
+    })
+  }, [])
+
+  const applyTableDialog = useCallback((payload) => {
+    if (viewMode === 'source') {
+      if (editorRef.current) editorRef.current.applyFormat('tableApply', payload)
+    } else if (viewMode === 'blocks') {
+      if (blockEditorRef.current) blockEditorRef.current.applyFormat('tableApply', payload)
+    }
+    setTableDialog(null)
+  }, [viewMode])
+
   const handleFormat = useCallback(async (action) => {
+    if (action === 'insertTable') {
+      const ctx = viewMode === 'source'
+        ? editorRef.current?.getTableContext?.()
+        : blockEditorRef.current?.getTableContext?.()
+      openTableDialog(ctx ? 'edit' : 'insert', ctx || undefined)
+      return
+    }
+
     if (action === 'insertImage') {
       const result = await pickImage()
       if (!result.cancelled && result.markdown) {
@@ -191,7 +275,7 @@ export default function App() {
     } else if (viewMode === 'blocks') {
       if (blockEditorRef.current) blockEditorRef.current.applyFormat(action)
     }
-  }, [viewMode, paper, handleContentChange])
+  }, [viewMode, paper, handleContentChange, openTableDialog])
 
   // ─── Home ───────────────────────────────────────
   const handleGoHome = useCallback(async () => {
@@ -249,6 +333,59 @@ export default function App() {
     setTimeout(() => setToast(null), 3000)
   }
 
+  const handleDeleteFolder = useCallback(async (folderPath) => {
+    if (paper) await savePaper(paper)
+    const result = await deleteFolder(folderPath)
+    if (result.error) {
+      showToast(result.error, 'error')
+      return
+    }
+    setSelectedFolder((prev) => mapSelectedFolderAfterDelete(prev, folderPath))
+    setPaper((prev) => {
+      if (!prev) return prev
+      return { ...prev, folder_path: mapPaperFolderAfterDelete(prev.folder_path || '', folderPath) }
+    })
+    await refreshFolders()
+    await refreshPapers()
+    showToast('Folder removed', 'success')
+  }, [paper, refreshFolders, refreshPapers])
+
+  const handleRenameFolder = useCallback(async (oldPath, newName) => {
+    if (paper) await savePaper(paper)
+    const result = await renameFolder(oldPath, newName)
+    if (result.error) {
+      showToast(result.error, 'error')
+      return
+    }
+    const newPath = folderPathAfterRename(oldPath, newName)
+    setSelectedFolder((prev) => mapSelectedFolderAfterRename(prev, oldPath, newPath))
+    setPaper((prev) => {
+      if (!prev) return prev
+      return { ...prev, folder_path: mapPaperFolderAfterRename(prev.folder_path || '', oldPath, newPath) }
+    })
+    await refreshFolders()
+    await refreshPapers()
+    showToast('Folder renamed', 'success')
+  }, [paper, refreshFolders, refreshPapers])
+
+  const handleMoveFolder = useCallback(async (folderPath, newParentPath) => {
+    if (paper) await savePaper(paper)
+    const result = await moveFolder(folderPath, newParentPath)
+    if (result.error) {
+      showToast(result.error, 'error')
+      return
+    }
+    const newPath = folderPathAfterMove(folderPath, newParentPath)
+    setSelectedFolder((prev) => mapSelectedFolderAfterRename(prev, folderPath, newPath))
+    setPaper((prev) => {
+      if (!prev) return prev
+      return { ...prev, folder_path: mapPaperFolderAfterRename(prev.folder_path || '', folderPath, newPath) }
+    })
+    await refreshFolders()
+    await refreshPapers()
+    showToast('Folder moved', 'success')
+  }, [paper, refreshFolders, refreshPapers])
+
   const runGenerateWithPolicy = useCallback(async (policy) => {
     if (!paper) return
     await savePaper(paper)
@@ -272,6 +409,99 @@ export default function App() {
     if (result.deleted) parts.push(`${result.deleted} removed`)
     showToast(parts.join(', '), 'success')
   }, [paper, refreshPapers])
+
+  const handleExtractFromSource = useCallback(async ({ mode, page, customText }) => {
+    if (!paper) return
+    const trimmedSelection = (customText || '').trim()
+    let extracted = null
+    if (mode === 'pdf') {
+      // Text selected in the viewer — use it directly; skip Python (often empty on scanned PDFs).
+      if (trimmedSelection) {
+        extracted = {
+          ok: true,
+          text: '',
+          path: (sourceState.path || '').replace(/\\/g, '/'),
+          page: Number(page || sourceState.page || 1),
+        }
+      } else {
+        extracted = await extractPdfText(sourceState.path || '', Number(page || sourceState.page || 1))
+      }
+    } else {
+      extracted = await extractWebText(sourceState.url || '')
+    }
+    if (!extracted || extracted.error) {
+      showToast(extracted?.error || 'Extraction failed', 'error')
+      return
+    }
+    const rawNote = trimmedSelection || extracted.text || ''
+    if (!rawNote.trim()) {
+      showToast('No extracted text', 'error')
+      return
+    }
+    // One block = one source line; newlines in PDF selection would split the document on next load.
+    const noteText = rawNote.replace(/\r\n/g, '\n').replace(/\s*\n+\s*/g, ' ').replace(/ +/g, ' ').trim()
+    const lines = (paper.content || '').split('\n')
+    const idx = lines.length
+    lines.push(withBlockId(noteText))
+    const updated = { ...paper, content: lines.join('\n'), modified_at: Date.now() / 1000 }
+    setPaper(updated)
+    const blockId = getBlockIdFromLine(lines[idx])
+    if (blockId) {
+      await saveSourceLink(updated.id, blockId, {
+        source_type: mode,
+        source_uri: mode === 'pdf' ? (sourceState.path || extracted.path || '') : (sourceState.url || extracted.url || ''),
+        locator: mode === 'pdf' ? { page: Number(page || sourceState.page || 1) } : {},
+        captured_text: noteText,
+      })
+    }
+    showToast('Extracted text added to notes', 'success')
+  }, [paper, sourceState])
+
+  const handleGoToSource = useCallback(async ({ lineIndex }) => {
+    if (!paper) return
+    const lines = (paper.content || '').split('\n')
+    const line = lines[lineIndex] || ''
+    const blockId = getBlockIdFromLine(line)
+    if (!blockId) {
+      showToast('No source link for this block', 'error')
+      return
+    }
+    const link = await loadSourceLink(paper.id, blockId)
+    if (!link || link.error) {
+      showToast('Source link not found', 'error')
+      return
+    }
+    if (link.source_type === 'pdf') {
+      const cap = (link.captured_text || '').trim()
+      setSourceState({
+        type: 'pdf',
+        path: link.source_uri || '',
+        url: '',
+        page: Number(link.locator?.page || 1),
+        jumpQuote: cap.length > 0 ? cap : null,
+      })
+    } else {
+      setSourceState({ type: 'web', path: '', url: link.source_uri || '', page: 1, jumpQuote: null })
+    }
+    setShowSourcePanel(true)
+    await openSourceAtLocation(link)
+  }, [paper])
+
+  const handleSourcePanelResizeStart = useCallback((e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sourcePanelWidth
+    const onMove = (ev) => {
+      const next = Math.max(280, Math.min(700, startWidth - (ev.clientX - startX)))
+      setSourcePanelWidth(next)
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [sourcePanelWidth])
 
   const handleGenerate = useCallback(async () => {
     if (!paper) return
@@ -324,8 +554,26 @@ export default function App() {
         }, 300)
       }
     }
-    return () => { delete window.jumpToBlock }
-  }, [handleSelectPaper])
+    
+    window.openZettel = async (title) => {
+      if (!title) return
+      const targetQuery = title.trim().toLowerCase().replace(/\s+/g, ' ')
+      const p = papers.find(pp => {
+        const t = (pp.title || '').trim().toLowerCase().replace(/\s+/g, ' ')
+        return t === targetQuery
+      })
+      if (p) {
+         await handleSelectPaper(p.id)
+      } else {
+         showToast(`Paper not found: ${title}`, 'error')
+      }
+    }
+
+    return () => { 
+       delete window.jumpToBlock
+       delete window.openZettel 
+    }
+  }, [handleSelectPaper, papers])
 
   // ─── Render ──────────────────────────────────────
   return (
@@ -338,6 +586,9 @@ export default function App() {
         onSelectFolder={setSelectedFolder} selectedFolder={selectedFolder}
         onGoHome={handleGoHome}
         onOpenSettings={() => setShowSettings(true)}
+        onDeleteFolder={handleDeleteFolder}
+        onRenameFolder={handleRenameFolder}
+        onMoveFolder={handleMoveFolder}
       />
 
       <div className="main-content">
@@ -345,8 +596,10 @@ export default function App() {
           <>
             <EditorHeader
               title={paper.title} deckName={paper.deck_name} decks={decks}
-              viewMode={viewMode} onTitleChange={handleTitleChange}
+              viewMode={viewMode} showSourcePanel={showSourcePanel}
+              onTitleChange={handleTitleChange}
               onDeckChange={handleDeckChange} onViewChange={setViewMode}
+              onToggleSource={() => setShowSourcePanel((v) => !v)}
               onExportPdf={handleExportPdf} onExportMarkdown={handleExportMarkdown}
               onImportMarkdown={handleImportMarkdown}
             />
@@ -373,6 +626,9 @@ export default function App() {
                   settings={settings}
                   mediaDir={mediaDir}
                   cardRefs={paper.card_refs}
+                  papers={papers}
+                  onTableEditRequest={(ctx) => openTableDialog('edit', ctx)}
+                  onGoToSource={handleGoToSource}
                 />
               )}
             </div>
@@ -397,6 +653,19 @@ export default function App() {
           />
         )}
       </div>
+      {showSourcePanel && (
+        <>
+          <div className="source-panel-resizer" onMouseDown={handleSourcePanelResizeStart} />
+          <div style={{ width: sourcePanelWidth, minWidth: sourcePanelWidth }}>
+            <SourcePanel
+              source={sourceState}
+              onSourceChange={(next) => setSourceState((prev) => ({ ...prev, ...next }))}
+              onExtract={handleExtractFromSource}
+              onClose={() => setShowSourcePanel(false)}
+            />
+          </div>
+        </>
+      )}
       {showSettings && <Settings settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />}
       {generateConflict && (
         <GenerateConflictModal
@@ -410,6 +679,15 @@ export default function App() {
             setGenerateConflict(null)
             await runGenerateWithPolicy('overwrite')
           }}
+        />
+      )}
+      {tableDialog && (
+        <TableDialog
+          mode={tableDialog.mode}
+          initialRows={tableDialog.rows}
+          initialCols={tableDialog.cols}
+          onApply={applyTableDialog}
+          onClose={() => setTableDialog(null)}
         />
       )}
       {toast && <Toast message={toast.message} type={toast.type} />}

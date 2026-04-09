@@ -2,6 +2,8 @@
  * Bridge module — QWebChannel communication with Python backend.
  */
 
+import { searchPapersAdvanced } from './searchQuery.js';
+
 let _bridge = null;
 let _ready = false;
 const _readyCallbacks = [];
@@ -91,6 +93,21 @@ export async function createFolder(name, parentPath = '') {
   const b = await getBridge();
   return new Promise(r => b.create_folder(name, parentPath, v => r(JSON.parse(v))));
 }
+export async function deleteFolder(folderPath) {
+  const b = await getBridge();
+  if (!b.delete_folder) return { error: 'delete_folder not available' };
+  return new Promise(r => b.delete_folder(folderPath || '', v => r(JSON.parse(v))));
+}
+export async function renameFolder(oldPath, newName) {
+  const b = await getBridge();
+  if (!b.rename_folder) return { error: 'rename_folder not available' };
+  return new Promise(r => b.rename_folder(oldPath || '', (newName || '').trim(), v => r(JSON.parse(v))));
+}
+export async function moveFolder(folderPath, newParentPath) {
+  const b = await getBridge();
+  if (!b.move_folder) return { error: 'move_folder not available' };
+  return new Promise(r => b.move_folder(folderPath || '', newParentPath || '', v => r(JSON.parse(v))));
+}
 
 // Images
 export async function getMediaDir() {
@@ -177,6 +194,38 @@ export async function openUrl(url) {
   b.open_url(url);
 }
 
+// Source panel
+export async function pickPdfFile() {
+  const b = await getBridge();
+  if (!b.pick_pdf_file) return { error: 'not available' };
+  return new Promise(r => b.pick_pdf_file(v => r(JSON.parse(v))));
+}
+export async function extractPdfText(path, page = 1) {
+  const b = await getBridge();
+  if (!b.extract_pdf_text) return { error: 'not available' };
+  return new Promise(r => b.extract_pdf_text(path, Number(page || 1), v => r(JSON.parse(v))));
+}
+export async function extractWebText(url) {
+  const b = await getBridge();
+  if (!b.extract_web_text) return { error: 'not available' };
+  return new Promise(r => b.extract_web_text(url, v => r(JSON.parse(v))));
+}
+export async function saveSourceLink(paperId, blockId, linkData) {
+  const b = await getBridge();
+  if (!b.save_source_link) return { error: 'not available' };
+  return new Promise(r => b.save_source_link(paperId, blockId, JSON.stringify(linkData || {}), v => r(JSON.parse(v))));
+}
+export async function loadSourceLink(paperId, blockId) {
+  const b = await getBridge();
+  if (!b.load_source_link) return { error: 'not available' };
+  return new Promise(r => b.load_source_link(paperId, blockId, v => r(JSON.parse(v))));
+}
+export async function openSourceAtLocation(linkData) {
+  const b = await getBridge();
+  if (!b.open_source_at_location) return { error: 'not available' };
+  return new Promise(r => b.open_source_at_location(JSON.stringify(linkData || {}), v => r(JSON.parse(v))));
+}
+
 // ─── Mock Bridge ────────────────────────────────────
 function createMockBridge() {
   const papers = [
@@ -199,6 +248,9 @@ function createMockBridge() {
     get_decks: cb => cb('["Default","Biology","Medicine"]'),
     get_folders: cb => cb(JSON.stringify({ name: 'Root', children: [{ type: 'folder', name: 'Biology', path: 'Biology', children: [] }] })),
     create_folder: (n, p, cb) => cb('{"ok":true}'),
+    delete_folder: (path, cb) => cb('{"ok":true}'),
+    rename_folder: (oldP, newN, cb) => cb('{"ok":true}'),
+    move_folder: (fp, np, cb) => cb('{"ok":true}'),
     get_media_dir: cb => cb('{"path":""}'),
     pick_image: cb => cb('{"cancelled":true}'),
     paste_image: cb => cb('{"cancelled":true}'),
@@ -213,12 +265,18 @@ function createMockBridge() {
       has_select_single_card: true,
     })),
     move_cards_to_deck: (p, d, cb) => cb('{"ok":true}'),
-    search_papers: (q, cb) => { const r = papers.filter(p => p.title.toLowerCase().includes(q.toLowerCase()) || p.content.toLowerCase().includes(q.toLowerCase())).map(p => ({ id: p.id, title: p.title, folder_path: p.folder_path, snippet: '', title_match: true, content_match: false })); cb(JSON.stringify(r)); },
+    search_papers: (q, cb) => { cb(JSON.stringify(searchPapersAdvanced(papers, q))); },
     import_markdown: cb => cb('{"cancelled":true}'),
     export_markdown: (id, cb) => cb('{"cancelled":true}'),
     export_pdf: (id, cb) => cb('{"cancelled":true}'),
     get_settings: cb => cb('{"default_deck":"Default","auto_save_interval_seconds":30,"font_size":14,"font_family":"JetBrains Mono","editor_theme":"dark","show_card_indicators":true,"anki_edit_conflict":"ask"}'),
     save_settings: (j, cb) => cb('{"ok":true}'),
     open_url: url => console.log('Mock: Open URL', url),
+    pick_pdf_file: cb => cb(JSON.stringify({ cancelled: true })),
+    extract_pdf_text: (path, page, cb) => cb(JSON.stringify({ ok: true, title: 'Demo PDF', text: `Extracted text from page ${page}`, path, page })),
+    extract_web_text: (url, cb) => cb(JSON.stringify({ ok: true, title: url, text: 'Extracted web content demo', url })),
+    save_source_link: (paperId, blockId, linkJson, cb) => cb(JSON.stringify({ ok: true })),
+    load_source_link: (paperId, blockId, cb) => cb(JSON.stringify({ error: 'Source link not found' })),
+    open_source_at_location: (meta, cb) => cb(JSON.stringify({ ok: true })),
   };
 }

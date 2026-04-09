@@ -1,7 +1,7 @@
 import React from 'react'
-import { Pencil, Eye, FileDown, FileInput, FileText } from 'lucide-react'
+import { Pencil, Eye, FileDown, FileInput, FileText, PanelRight } from 'lucide-react'
 
-export default function EditorHeader({ title, deckName, decks, viewMode, onTitleChange, onDeckChange, onViewChange, onExportPdf, onExportMarkdown, onImportMarkdown }) {
+export default function EditorHeader({ title, deckName, decks, viewMode, showSourcePanel, onTitleChange, onDeckChange, onViewChange, onToggleSource, onExportPdf, onExportMarkdown, onImportMarkdown }) {
   return (
     <div className="editor-header">
       <input className="paper-title-input" value={title}
@@ -40,6 +40,16 @@ export default function EditorHeader({ title, deckName, decks, viewMode, onTitle
       </button>
       <button className="header-icon-btn" title="Export PDF" onClick={onExportPdf}>
         <FileDown size={16} />
+      </button>
+
+      <div className="header-separator" />
+
+      <button
+        className={`header-icon-btn ${showSourcePanel ? 'active' : ''}`}
+        title="Toggle source panel"
+        onClick={onToggleSource}
+      >
+        <PanelRight size={16} />
       </button>
     </div>
   )

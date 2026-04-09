@@ -1,5 +1,5 @@
 import React from 'react'
-import { Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Braces, ChevronsRight, ArrowLeftRight, Image, Sigma } from 'lucide-react'
+import { Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Minus, Braces, ChevronsRight, ArrowLeftRight, Image, Sigma, Table2, Rows3, Columns3 } from 'lucide-react'
 
 const buttons = [
   { action: 'bold', icon: Bold, title: 'Bold (Ctrl+B)' },
@@ -21,6 +21,10 @@ const buttons = [
   { action: 'basicCard', icon: ChevronsRight, title: 'Basic Card (>>)', className: 'accent-green' },
   { action: 'reversibleCard', icon: ArrowLeftRight, title: 'Reversible Card (<>)', className: 'accent-blue' },
   { action: 'cloze', label: '{{}}', title: 'Cloze Deletion', className: 'accent-pink' },
+  { action: 'multiCloze', label: 'c+', title: 'Add Next Cloze Number', className: 'accent-pink' },
+  { action: 'insertTable', icon: Table2, title: 'Insert Table' },
+  { action: 'tableAddRow', icon: Rows3, title: 'Table: Add Row' },
+  { action: 'tableAddColumn', icon: Columns3, title: 'Table: Add Column' },
   'sep',
   { action: 'insertImage', icon: Image, title: 'Insert Image' },
 ]

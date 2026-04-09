@@ -54,6 +54,15 @@ const formatActions = {
     if (sel) { wrapSelection(ta, '{{', '}}') }
     else { insertAtCursor(ta, '{{cloze text}}') }
   },
+  multiCloze: (ta) => {
+    const next = getNextClozeNumberAtCursor(ta)
+    const sel = getSelection(ta)
+    if (sel) { wrapSelection(ta, `{{c${next}::`, '}}') }
+    else { insertAtCursor(ta, `{{c${next}::cloze text}}`) }
+  },
+  insertTable: (ta) => insertAtCursor(ta, '\n| Column 1 | Column 2 |\n| --- | --- |\n| Value 1 | Value 2 |\n'),
+  tableAddRow: (ta) => addTableRowAtCursor(ta),
+  tableAddColumn: (ta) => addTableColumnAtCursor(ta),
   math: (ta) => {
     const sel = getSelection(ta)
     if (sel) { wrapSelection(ta, '$', '$') }
@@ -118,9 +127,155 @@ function insertAtCursor(ta, text) {
   ta.focus(); ta.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+function getLineRangeAtCursor(ta) {
+  const start = ta.selectionStart
+  const text = ta.value
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1
+  const lineEnd = text.indexOf('\n', start)
+  return [lineStart, lineEnd === -1 ? text.length : lineEnd]
+}
+
+function getNextClozeNumberAtCursor(ta) {
+  const [lineStart, lineEnd] = getLineRangeAtCursor(ta)
+  const line = ta.value.substring(lineStart, lineEnd)
+  const matches = [...line.matchAll(/\{\{c(\d+)::/g)]
+  let max = 0
+  for (const m of matches) max = Math.max(max, parseInt(m[1], 10) || 0)
+  return max + 1
+}
+
+function parseTableRow(line) {
+  const s = line.trim()
+  if (!(s.startsWith('|') && s.endsWith('|'))) return null
+  return s.slice(1, -1).split('|').map((c) => c.trim())
+}
+
+function isTableSeparatorRow(line) {
+  const cells = parseTableRow(line)
+  if (!cells || cells.length < 2) return false
+  return cells.every((c) => /^:?-{3,}:?$/.test(c))
+}
+
+function findTableBounds(lines, cursorLine) {
+  const isTableRow = (ln) => parseTableRow(ln) !== null
+  if (!isTableRow(lines[cursorLine])) return null
+  let start = cursorLine
+  while (start > 0 && isTableRow(lines[start - 1])) start--
+  let end = cursorLine
+  while (end + 1 < lines.length && isTableRow(lines[end + 1])) end++
+  if (start + 1 > end || !isTableSeparatorRow(lines[start + 1])) return null
+  return { start, end }
+}
+
+function addTableRowAtCursor(ta) {
+  const text = ta.value
+  const lineAtCursor = text.slice(0, ta.selectionStart).split('\n').length - 1
+  const lines = text.split('\n')
+  const bounds = findTableBounds(lines, lineAtCursor)
+  if (!bounds) return
+
+  const headerCells = parseTableRow(lines[bounds.start]) || []
+  const newRow = `| ${headerCells.map((_, i) => `Value ${i + 1}`).join(' | ')} |`
+  const insertAt = Math.max(lineAtCursor + 1, bounds.start + 2)
+  lines.splice(insertAt, 0, newRow)
+  ta.value = lines.join('\n')
+  ta.focus()
+  ta.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function addTableColumnAtCursor(ta) {
+  const text = ta.value
+  const lineAtCursor = text.slice(0, ta.selectionStart).split('\n').length - 1
+  const lines = text.split('\n')
+  const bounds = findTableBounds(lines, lineAtCursor)
+  if (!bounds) return
+
+  for (let i = bounds.start; i <= bounds.end; i++) {
+    const cells = parseTableRow(lines[i])
+    if (!cells) continue
+    if (i === bounds.start) cells.push(`Column ${cells.length + 1}`)
+    else if (i === bounds.start + 1) cells.push('---')
+    else cells.push(`Value ${cells.length + 1}`)
+    lines[i] = `| ${cells.join(' | ')} |`
+  }
+  ta.value = lines.join('\n')
+  ta.focus()
+  ta.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function ensureTableAtCursor(ta, rows, cols) {
+  const text = ta.value
+  const lineAtCursor = text.slice(0, ta.selectionStart).split('\n').length - 1
+  const lines = text.split('\n')
+  const bounds = findTableBounds(lines, lineAtCursor)
+
+  const targetRows = Math.max(1, rows || 2)
+  const targetCols = Math.max(1, cols || 2)
+
+  if (!bounds) {
+    const header = `| ${Array.from({ length: targetCols }, (_, i) => `Column ${i + 1}`).join(' | ')} |`
+    const sep = `| ${Array.from({ length: targetCols }, () => '---').join(' | ')} |`
+    const body = Array.from({ length: Math.max(0, targetRows - 1) }, (_, r) =>
+      `| ${Array.from({ length: targetCols }, (_, c) => `Value ${r + 1}.${c + 1}`).join(' | ')} |`
+    )
+    insertAtCursor(ta, `\n${header}\n${sep}${body.length ? '\n' + body.join('\n') : ''}\n`)
+    return
+  }
+
+  const current = lines.slice(bounds.start, bounds.end + 1).map((ln) => parseTableRow(ln) || [])
+  const currentCols = (parseTableRow(lines[bounds.start]) || []).length
+  const currentBodyRows = Math.max(0, bounds.end - (bounds.start + 1))
+
+  const newBlock = []
+  const header = Array.from({ length: targetCols }, (_, i) => (i < currentCols ? (current[0][i] || `Column ${i + 1}`) : `Column ${i + 1}`))
+  newBlock.push(`| ${header.join(' | ')} |`)
+  newBlock.push(`| ${Array.from({ length: targetCols }, (_, i) => (i < currentCols ? '---' : '---')).join(' | ')} |`)
+
+  for (let r = 0; r < Math.max(0, targetRows - 1); r++) {
+    const old = r < currentBodyRows ? current[r + 2] : []
+    const row = Array.from({ length: targetCols }, (_, c) => (c < currentCols ? (old[c] || `Value ${r + 1}.${c + 1}`) : `Value ${r + 1}.${c + 1}`))
+    newBlock.push(`| ${row.join(' | ')} |`)
+  }
+
+  lines.splice(bounds.start, bounds.end - bounds.start + 1, ...newBlock)
+  ta.value = lines.join('\n')
+  ta.focus()
+  ta.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function escapeHtml(text) {
+  return (text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function highlightLine(line) {
+  let h = escapeHtml(line)
+
+  h = h.replace(/(\{\{c\d+::.+?\}\}|\{\{.+?\}\})/g, '<span class="src-syn-cloze">$1</span>')
+  h = h.replace(/(\s&lt;&gt;\s)/g, '<span class="src-syn-reversible">$1</span>')
+  h = h.replace(/(\s&gt;&gt;\s)/g, '<span class="src-syn-basic">$1</span>')
+  h = h.replace(/(\*\*[^*]+\*\*)/g, '<span class="src-syn-bold">$1</span>')
+  h = h.replace(/(^|[^*])(\*[^*\n]+\*)/g, '$1<span class="src-syn-italic">$2</span>')
+
+  if (/^#{1,6}\s/.test(line)) {
+    h = `<span class="src-syn-heading">${h}</span>`
+  }
+  return h
+}
+
+function highlightMarkdown(text) {
+  const lines = (text || '').split('\n')
+  const html = lines.map(highlightLine).join('\n')
+  // Keep trailing newline visible in overlay so caret alignment stays accurate.
+  return html + '\n'
+}
+
 // ─── Component ──────────────────────────────────────
 const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCardCountChange, settings, cardRefs }, ref) {
   const textareaRef = useRef(null)
+  const overlayRef = useRef(null)
   const countTimerRef = useRef(null)
   const [cursorTick, setCursorTick] = useState(0)
 
@@ -150,11 +305,25 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
       if (textareaRef.current) {
         if (action === 'insertImageMd' && extra) {
           formatActions.insertImageMd(textareaRef.current, extra)
+        } else if (action === 'tableApply' && extra) {
+          ensureTableAtCursor(textareaRef.current, extra.rows, extra.cols)
         } else if (formatActions[action]) {
           formatActions[action](textareaRef.current)
         }
       }
-    }
+    },
+    getTableContext: () => {
+      const ta = textareaRef.current
+      if (!ta) return null
+      const text = ta.value
+      const lineAtCursor = text.slice(0, ta.selectionStart).split('\n').length - 1
+      const lines = text.split('\n')
+      const bounds = findTableBounds(lines, lineAtCursor)
+      if (!bounds) return null
+      const cols = (parseTableRow(lines[bounds.start]) || []).length
+      const rows = Math.max(1, bounds.end - bounds.start)
+      return { rows, cols }
+    },
   }))
 
   const handleInput = useCallback((e) => {
@@ -180,6 +349,15 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
 
   const fontSize = settings?.font_size || 14
   const fontFamily = settings?.font_family || "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace"
+  const highlightedHtml = useMemo(() => highlightMarkdown(content), [content])
+
+  const syncScroll = useCallback(() => {
+    const ta = textareaRef.current
+    const ov = overlayRef.current
+    if (!ta || !ov) return
+    ov.scrollTop = ta.scrollTop
+    ov.scrollLeft = ta.scrollLeft
+  }, [])
 
   return (
     <div className="source-editor-wrap">
@@ -200,19 +378,28 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
           {noteIdAtCursor != null && <span className="source-crosslink-nid">nid:{noteIdAtCursor}</span>}
         </button>
       </div>
-      <textarea
-        ref={textareaRef}
-        className="source-editor"
-        defaultValue={content}
-        onInput={handleInput}
-        onSelect={bumpCursor}
-        onKeyUp={bumpCursor}
-        onClick={bumpCursor}
-        onKeyDown={handleKeyDown}
-        placeholder={"Start writing your notes here...\n\nUse >> for basic cards\nUse <> for reversible cards\nUse {{text}} for cloze deletions"}
-        spellCheck={false}
-        style={{ fontSize, fontFamily }}
-      />
+      <div className="source-editor-stack" style={{ fontSize, fontFamily }}>
+        <pre
+          ref={overlayRef}
+          className="source-editor-highlight"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+        <textarea
+          ref={textareaRef}
+          className="source-editor source-editor-overlay"
+          value={content}
+          onInput={handleInput}
+          onScroll={syncScroll}
+          onSelect={bumpCursor}
+          onKeyUp={bumpCursor}
+          onClick={bumpCursor}
+          onKeyDown={handleKeyDown}
+          placeholder={"Start writing your notes here...\n\nUse >> for basic cards\nUse <> for reversible cards\nUse {{text}} for cloze deletions"}
+          spellCheck={false}
+          style={{ fontSize, fontFamily }}
+        />
+      </div>
     </div>
   )
 })

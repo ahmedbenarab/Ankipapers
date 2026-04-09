@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PDF Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #f0f0f0;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+  #viewer {
+    width: 100%; height: 100%;
+    overflow-y: auto; overflow-x: hidden;
+    display: flex; flex-direction: column;
+    align-items: center; padding: 8px 0; gap: 8px;
+  }
+  .page-wrap {
+    position: relative; display: inline-block;
+    box-shadow: 0 1px 8px rgba(0,0,0,.15);
+    background: #fff;
+  }
+  .page-wrap canvas { display: block; }
+  .textLayer {
+    position: absolute; inset: 0;
+    overflow: hidden; line-height: 1;
+    pointer-events: all;
+  }
+  .textLayer span {
+    color: transparent; position: absolute;
+    white-space: pre; cursor: text;
+    transform-origin: 0% 0%;
+  }
+  .textLayer ::selection {
+    background: rgba(108,99,255,.35);
+    color: transparent;
+  }
+  .textLayer span.ap-quote-flash {
+    background: rgba(108, 99, 255, 0.42) !important;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(108, 99, 255, 0.35);
+    transition: background 0.25s ease;
+  }
+  #empty {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; opacity: .4; user-select: none;
+    font-size: 13px; color: #666;
+  }
+  #loading {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    font-size: 13px; color: #888; display: none;
+  }
+  #loading.visible { display: block; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="viewer">
+  <div id="empty">No PDF loaded</div>
+</div>
+<div id="loading">Loading PDF...</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let pdfDoc = null, totalPages = 0;
+
+function clearPdf() {
+  pdfDoc = null;
+  totalPages = 0;
+  document.getElementById('loading').classList.remove('visible');
+  var vc = document.getElementById('viewer');
+  vc.innerHTML = '';
+  var empty = document.createElement('div');
+  empty.id = 'empty';
+  empty.textContent = 'No PDF loaded';
+  vc.appendChild(empty);
+  notifyParent('closed', {});
+}
+
+function loadPdf(url) {
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('loading').classList.add('visible');
+  var vc = document.getElementById('viewer');
+  vc.innerHTML = '';
+  pdfDoc = null; totalPages = 0;
+
+  pdfjsLib.getDocument({ url: url }).promise.then(function(doc) {
+    pdfDoc = doc;
+    totalPages = doc.numPages;
+    document.getElementById('loading').classList.remove('visible');
+    renderAllPages();
+    notifyParent('loaded', { pages: totalPages });
+  }).catch(function(err) {
+    document.getElementById('loading').classList.remove('visible');
+    var vc2 = document.getElementById('viewer');
+    vc2.innerHTML = '<div id="empty" style="color:#c33">Error: ' + err.message + '</div>';
+    notifyParent('error', { message: err.message });
+  });
+}
+
+function renderAllPages() {
+  var vc = document.getElementById('viewer');
+  vc.innerHTML = '';
+  for (var i = 1; i <= totalPages; i++) renderPage(i, vc);
+}
+
+function renderPage(num, container) {
+  var wrap = document.createElement('div');
+  wrap.className = 'page-wrap';
+  wrap.dataset.page = num;
+  container.appendChild(wrap);
+
+  pdfDoc.getPage(num).then(function(page) {
+    var cw = document.getElementById('viewer').clientWidth - 20;
+    var unscaled = page.getViewport({ scale: 1 });
+    var scale = Math.max(0.5, cw / unscaled.width);
+    var viewport = page.getViewport({ scale: scale });
+    var dpr = window.devicePixelRatio || 1;
+
+    wrap.style.width = viewport.width + 'px';
+    wrap.style.height = viewport.height + 'px';
+
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = viewport.width + 'px';
+    canvas.style.height = viewport.height + 'px';
+    wrap.appendChild(canvas);
+
+    var ctx = canvas.getContext('2d');
+    var transform = dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null;
+
+    page.render({ canvasContext: ctx, viewport: viewport, transform: transform }).promise.then(function() {
+      var textDiv = document.createElement('div');
+      textDiv.className = 'textLayer';
+      textDiv.style.width = viewport.width + 'px';
+      textDiv.style.height = viewport.height + 'px';
+      wrap.appendChild(textDiv);
+
+      page.getTextContent().then(function(tc) {
+        pdfjsLib.renderTextLayer({
+          textContentSource: tc,
+          container: textDiv,
+          viewport: viewport,
+        }).promise.catch(function() {});
+      });
+    });
+  });
+}
+
+function goToPage(n) {
+  if (!pdfDoc) return;
+  var wrap = document.querySelector('.page-wrap[data-page="' + n + '"]');
+  if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function normalizeQuoteText(s) {
+  if (!s) return '';
+  return String(s).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function flashQuoteSpan(el) {
+  if (!el) return;
+  el.classList.add('ap-quote-flash');
+  setTimeout(function () { el.classList.remove('ap-quote-flash'); }, 2200);
+}
+
+/** @returns {boolean} true if a match was scrolled into view */
+function findQuoteOnPage(pageWrap, rawQuote) {
+  var spans = pageWrap.querySelectorAll('.textLayer span');
+  if (!spans.length) return false;
+  var nq = normalizeQuoteText(rawQuote);
+  if (nq.length < 6) return false;
+  var blob = '';
+  var i = 0;
+  for (i = 0; i < spans.length; i++) {
+    blob += (spans[i].textContent || '');
+  }
+  var nb = normalizeQuoteText(blob);
+  var needle = nq;
+  var idx = nb.indexOf(needle);
+  if (idx === -1) {
+    for (var L = Math.min(needle.length, 500); L >= 18; L = Math.floor(L * 0.86)) {
+      needle = nq.slice(0, L);
+      idx = nb.indexOf(needle);
+      if (idx !== -1) break;
+    }
+  }
+  if (idx === -1) return false;
+  blob = '';
+  var accNorm = '';
+  for (i = 0; i < spans.length; i++) {
+    var span = spans[i];
+    var t = span.textContent || '';
+    blob += t;
+    accNorm = normalizeQuoteText(blob);
+    var needLen = Math.min(24, needle.length);
+    if (accNorm.length >= idx + needLen) {
+      span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      flashQuoteSpan(span);
+      return true;
+    }
+  }
+  return false;
+}
+
+/** @returns {boolean} */
+function scrollToQuote(quote, preferredPage) {
+  if (!pdfDoc || !quote) return false;
+  var nq = normalizeQuoteText(quote);
+  if (nq.length < 6) {
+    goToPage(preferredPage || 1);
+    return true;
+  }
+  var order = [];
+  var pp = parseInt(preferredPage, 10) || 1;
+  if (pp >= 1 && pp <= totalPages) order.push(pp);
+  var p = 1;
+  for (p = 1; p <= totalPages; p++) {
+    if (p !== pp) order.push(p);
+  }
+  for (var oi = 0; oi < order.length; oi++) {
+    var pw = document.querySelector('.page-wrap[data-page="' + order[oi] + '"]');
+    if (pw && findQuoteOnPage(pw, quote)) {
+      pw.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return true;
+    }
+  }
+  goToPage(pp);
+  return false;
+}
+
+function runScrollToQuote(quote, page) {
+  var tries = 0;
+  function attempt() {
+    tries++;
+    if (!pdfDoc) return;
+    if (scrollToQuote(quote, page)) {
+      notifyParent('jumpDone', { ok: true });
+      return;
+    }
+    if (tries < 18) setTimeout(attempt, 200);
+    else {
+      goToPage(parseInt(page, 10) || 1);
+      notifyParent('jumpDone', { ok: false });
+    }
+  }
+  setTimeout(attempt, 120);
+}
+
+function getVisiblePage() {
+  var vc = document.getElementById('viewer');
+  var wraps = vc.querySelectorAll('.page-wrap');
+  var top = vc.scrollTop;
+  for (var i = 0; i < wraps.length; i++) {
+    if (wraps[i].offsetTop + wraps[i].offsetHeight > top) return parseInt(wraps[i].dataset.page || '1');
+  }
+  return 1;
+}
+
+function notifyParent(type, data) {
+  try {
+    var msg = { source: 'pdf-viewer', type: type };
+    for (var k in data) msg[k] = data[k];
+    window.parent.postMessage(msg, '*');
+  } catch(e) {}
+}
+
+window.addEventListener('message', function(e) {
+  var d = e.data;
+  if (!d || d.source !== 'ankipapers') return;
+  if (d.cmd === 'clear') clearPdf();
+  if (d.cmd === 'load') loadPdf(d.url);
+  if (d.cmd === 'goToPage') goToPage(d.page);
+  if (d.cmd === 'scrollToQuote') runScrollToQuote(d.quote || '', d.page || 1);
+});
+
+document.getElementById('viewer').addEventListener('scroll', function() {
+  var p = getVisiblePage();
+  notifyParent('page', { page: p, total: totalPages });
+});
+
+document.addEventListener('mouseup', function() {
+  setTimeout(function() {
+    var sel = window.getSelection();
+    var text = (sel ? sel.toString() : '').trim();
+    if (text) {
+      notifyParent('selection', { text: text, page: getVisiblePage() });
+    }
+  }, 10);
+});
+
+var resizeTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() { if (pdfDoc) renderAllPages(); }, 200);
+});
+</script>
+</body>
+</html>

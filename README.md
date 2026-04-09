@@ -67,7 +67,7 @@ The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `
 | `gui/` | Qt window, `QWebChannel` bridge to the UI |
 | `web/` | Built static UI (HTML/JS/CSS) loaded by the webview |
 | `web_src/` | React source; build output goes to `web/` |
-| `user_files/` | **Local only** — your papers and media (gitignored; created at runtime) |
+| `user_files/` | Local cache/fallback files only (gitignored; runtime-created when needed) |
 | `_build.ps1` / `build_ankiaddon.bat` | Pack `Ankipapers.ankiaddon` |
 
 ## Card syntax (quick reference)
@@ -83,6 +83,13 @@ Headings (`#`), lists, blockquotes, `---`, images `![alt](file)`, and inline for
 ## Settings
 
 **Tools → Add-ons → Anki Papers → Config** (or in-app **Settings**) for default deck, autosave, fonts, theme, and behavior when Anki notes differ from the paper during **Generate**.
+
+## Data and sync behavior
+
+- **Papers and folder structure:** stored in Anki collection config and synced with AnkiWeb.
+- **Generated flashcards/notes:** normal Anki collection data, synced as usual.
+- **Images:** copied into your collection media folder and synced through Anki media sync.
+- **`user_files/`:** used only as local fallback/cache in edge cases (for example when collection access is unavailable).
 
 ## Contributing / issues
 

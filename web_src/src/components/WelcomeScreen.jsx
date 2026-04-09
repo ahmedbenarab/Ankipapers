@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react'
+import ankipapersLogo from '../assets/ankipapers-logo.svg'
 import {
   FileText,
   Plus,
@@ -63,7 +64,14 @@ export default function WelcomeScreen({
         <div className="welcome-top">
           <div className="welcome-hero">
             <div className="welcome-icon">
-              <FileText size={48} strokeWidth={1.5} />
+              <img
+                src={ankipapersLogo}
+                alt="Anki Papers"
+                className="welcome-logo"
+                width={96}
+                height={96}
+                decoding="async"
+              />
             </div>
             <h1 className="welcome-title">Anki Papers</h1>
             <p className="welcome-subtitle">

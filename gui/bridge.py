@@ -12,11 +12,15 @@ import traceback
 import time
 import re
 import uuid
+import urllib.request
+from urllib.parse import urlparse
+import html
 
 from aqt.qt import QObject, pyqtSlot, pyqtSignal, QFileDialog, QApplication, QImage, QTimer
 from aqt import mw
 
 from ..core.paper import Paper
+from ..core.search_query import search_papers_advanced
 from ..core.storage import (
     save_paper,
     load_paper,
@@ -24,6 +28,11 @@ from ..core.storage import (
     list_papers,
     save_folder_structure,
     load_folder_structure,
+    delete_folder_structure,
+    rename_folder_structure,
+    move_folder_structure,
+    save_source_link,
+    load_source_link,
 )
 from ..core.card_manager import (
     generate_cards as run_generate_cards,
@@ -33,6 +42,7 @@ from ..core.card_manager import (
 )
 
 MAX_FOLDER_DEPTH = 3  # Maximum nesting level for sub-folders
+
 
 
 def _select_note_card_in_browser_table(browser, note_id: int) -> dict:
@@ -247,6 +257,41 @@ class AnkiPapersBridge(QObject):
             else:
                 self._add_child(folders, parent_path, new_folder)
             save_folder_structure(folders)
+            return json.dumps({"ok": True})
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+    @pyqtSlot(str, result=str)
+    def delete_folder(self, folder_path):
+        try:
+            err = delete_folder_structure(folder_path or "")
+            if err:
+                return json.dumps({"error": err}, ensure_ascii=False)
+            return json.dumps({"ok": True})
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+    @pyqtSlot(str, str, result=str)
+    def rename_folder(self, old_path, new_name):
+        try:
+            err = rename_folder_structure(old_path or "", new_name or "")
+            if err:
+                return json.dumps({"error": err}, ensure_ascii=False)
+            return json.dumps({"ok": True})
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+    @pyqtSlot(str, str, result=str)
+    def move_folder(self, folder_path, new_parent_path):
+        try:
+            err = move_folder_structure(
+                folder_path or "", new_parent_path or "", max_depth=MAX_FOLDER_DEPTH
+            )
+            if err:
+                return json.dumps({"error": err}, ensure_ascii=False)
             return json.dumps({"ok": True})
         except Exception as e:
             traceback.print_exc()
@@ -471,6 +516,197 @@ class AnkiPapersBridge(QObject):
         except Exception:
             traceback.print_exc()
 
+    # ─── Source Panel APIs ───────────────────────────
+
+    @pyqtSlot(result=str)
+    def pick_pdf_file(self):
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                None, "Select PDF", "", "PDF Files (*.pdf);;All Files (*)"
+            )
+            if not file_path:
+                return json.dumps({"cancelled": True})
+            return json.dumps(
+                {"ok": True, "path": file_path.replace("\\", "/"), "name": os.path.basename(file_path)},
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+
+    @pyqtSlot(str, str, str, result=str)
+    def save_source_link(self, paper_id, block_id, link_json):
+        try:
+            data = json.loads(link_json or "{}")
+            ok = save_source_link(
+                paper_id=paper_id or "",
+                block_id=block_id or "",
+                source_type=data.get("source_type", ""),
+                source_uri=data.get("source_uri", ""),
+                locator=data.get("locator", {}) or {},
+                captured_text=data.get("captured_text", ""),
+            )
+            return json.dumps({"ok": bool(ok)})
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+    @pyqtSlot(str, str, result=str)
+    def load_source_link(self, paper_id, block_id):
+        try:
+            data = load_source_link(paper_id or "", block_id or "")
+            if not data:
+                return json.dumps({"error": "Source link not found"})
+            return json.dumps(data, ensure_ascii=False)
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+    @pyqtSlot(str, int, result=str)
+    def extract_pdf_text(self, pdf_path, page):
+        try:
+            if not pdf_path:
+                return json.dumps({"error": "Missing PDF path"})
+            path = os.path.normpath(pdf_path)
+            if not os.path.isfile(path):
+                return json.dumps({"error": "PDF file not found"})
+            p = int(page or 1)
+            if p < 1:
+                p = 1
+            title = os.path.basename(path)
+            text = ""
+
+            def _with_pypdf():
+                nonlocal text, title
+                from pypdf import PdfReader  # type: ignore
+
+                try:
+                    reader = PdfReader(path, strict=False)
+                except TypeError:
+                    reader = PdfReader(path)
+                if not reader.pages:
+                    return
+                page_idx = min(max(0, p - 1), len(reader.pages) - 1)
+                pg = reader.pages[page_idx]
+                text = (pg.extract_text() or "").strip()
+                meta_title = getattr(reader, "metadata", None)
+                if meta_title and getattr(meta_title, "title", None):
+                    title = str(meta_title.title)
+
+            def _with_pymupdf():
+                nonlocal text
+                import fitz  # type: ignore  # PyMuPDF
+
+                doc = fitz.open(path)
+                try:
+                    if doc.page_count < 1:
+                        return
+                    page_idx = min(max(0, p - 1), doc.page_count - 1)
+                    t = doc.load_page(page_idx).get_text("text") or ""
+                    if t.strip():
+                        text = t.strip()
+                finally:
+                    doc.close()
+
+            missing = {"pypdf": False, "pymupdf": False}
+            for name, fn in (
+                ("pypdf", _with_pypdf),
+                ("pymupdf", _with_pymupdf),
+            ):
+                try:
+                    fn()
+                    if text:
+                        break
+                except ImportError:
+                    missing[name] = True
+                    text = ""
+                except Exception:
+                    text = ""
+
+            if not text:
+                if missing["pypdf"] and missing["pymupdf"]:
+                    hint = (
+                        "No PDF engine found. Install for this Anki’s Python: pip install pypdf pymupdf"
+                    )
+                elif not missing["pypdf"]:
+                    hint = (
+                        "No extractable text on this page (common for scanned PDFs). "
+                        "Select text in the viewer and tap “Add to notes”, or try: pip install pymupdf"
+                    )
+                else:
+                    hint = "Could not extract text (install: pip install pypdf)"
+                return json.dumps({"error": hint})
+            return json.dumps(
+                {"ok": True, "title": title, "text": text, "page": p, "path": path.replace("\\", "/")},
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+    @pyqtSlot(str, result=str)
+    def extract_web_text(self, url):
+        try:
+            raw = (url or "").strip()
+            if not raw:
+                return json.dumps({"error": "Invalid URL"})
+            if not raw.startswith(("http://", "https://", "//")):
+                raw = "https://" + raw
+            if raw.startswith("//"):
+                raw = "https:" + raw
+            try:
+                p = urlparse(raw)
+                if p.scheme not in ("http", "https") or not p.netloc:
+                    return json.dumps({"error": "Invalid URL"})
+                url = p.geturl()
+            except Exception:
+                return json.dumps({"error": "Invalid URL"})
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (AnkiPapers)"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as r:
+                raw = r.read().decode("utf-8", errors="ignore")
+            t = re.sub(r"(?is)<script.*?>.*?</script>", " ", raw)
+            t = re.sub(r"(?is)<style.*?>.*?</style>", " ", t)
+            title_m = re.search(r"(?is)<title[^>]*>(.*?)</title>", raw)
+            title = html.unescape(title_m.group(1).strip()) if title_m else url
+            body = re.sub(r"(?is)<[^>]+>", " ", t)
+            body = html.unescape(re.sub(r"\s+", " ", body)).strip()
+            return json.dumps({"ok": True, "title": title, "text": body, "url": url}, ensure_ascii=False)
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
+    @pyqtSlot(str, result=str)
+    def open_source_at_location(self, source_meta_json):
+        try:
+            data = json.loads(source_meta_json or "{}")
+            st = (data.get("source_type") or "").lower()
+            uri = data.get("source_uri") or ""
+            locator = data.get("locator") or {}
+            if st == "pdf":
+                page = int(locator.get("page") or 1)
+                from aqt.utils import openLink
+                file_url = f"file:///{uri.replace('\\', '/')}"
+                if page > 1:
+                    file_url = f"{file_url}#page={page}"
+                openLink(file_url)
+                return json.dumps({"ok": True, "opened": file_url})
+            if st == "web":
+                target = uri
+                anchor = locator.get("anchor")
+                if anchor and "#" not in target:
+                    target = f"{target}#{anchor}"
+                from aqt.utils import openLink
+                openLink(target)
+                return json.dumps({"ok": True, "opened": target})
+            return json.dumps({"error": "Unknown source type"})
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"error": str(e)})
+
     @pyqtSlot(str, str, result=str)
     def move_cards_to_deck(self, paper_id, deck_name):
         """Move all cards of a paper to a new deck."""
@@ -677,34 +913,15 @@ Generated by Anki Papers
 
     @pyqtSlot(str, result=str)
     def search_papers(self, query):
-        """Full-text search across all papers. Returns matching paper IDs + snippets."""
+        """
+        Advanced search: field filters (title:, content:, folder:, deck:, tag:),
+        quoted phrases, -negation, and OR branches. See core/search_query.py.
+        """
         try:
             papers = list_papers()
-            q = query.strip().lower()
-            if not q:
-                return json.dumps([])
-            results = []
-            for p in papers:
-                title_match = q in p.title.lower()
-                content_lower = p.content.lower()
-                content_match = q in content_lower
-                if title_match or content_match:
-                    snippet = ""
-                    if content_match:
-                        idx = content_lower.index(q)
-                        start = max(0, idx - 40)
-                        end = min(len(p.content), idx + len(q) + 40)
-                        snippet = ("..." if start > 0 else "") + p.content[start:end].replace("\n", " ") + ("..." if end < len(p.content) else "")
-                    results.append({
-                        "id": p.id,
-                        "title": p.title,
-                        "folder_path": p.folder_path,
-                        "snippet": snippet,
-                        "title_match": title_match,
-                        "content_match": content_match,
-                    })
+            results = search_papers_advanced(papers, query or "")
             return json.dumps(results, ensure_ascii=False)
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
             return json.dumps([])
 
