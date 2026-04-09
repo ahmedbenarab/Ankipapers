@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="AnkiPapers logo.png" alt="Anki Papers Logo" width="200"/>
+  <img src="AnkiPapers logo.svg" alt="Anki Papers Logo" width="200"/>
 </p>
 
 # Anki Papers
