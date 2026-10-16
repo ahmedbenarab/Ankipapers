@@ -20,6 +20,7 @@ class CardReference:
         content_hash: str = "",
         synced: bool = False,
         block_id: Optional[str] = None,
+        derived_hash: Optional[str] = None,
     ):
         self.line_index = line_index
         self.card_type = card_type  # "basic" or "cloze"
@@ -27,6 +28,12 @@ class CardReference:
         self.content_hash = content_hash
         self.synced = synced
         self.block_id = block_id
+        # What the note's supplement and heading breadcrumb were the last time
+        # this note was written. content_hash covers only the card's own line,
+        # so without this a changed "&&" supplement or a renamed heading left
+        # the hash identical while the note no longer matched the paper — and
+        # Generate could not tell that from someone editing the note in Anki.
+        self.derived_hash = derived_hash
 
     def to_dict(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {
@@ -38,6 +45,8 @@ class CardReference:
         }
         if self.block_id:
             d["block_id"] = self.block_id
+        if self.derived_hash:
+            d["derived_hash"] = self.derived_hash
         return d
 
     @classmethod
@@ -49,6 +58,7 @@ class CardReference:
             content_hash=data.get("content_hash", ""),
             synced=data.get("synced", False),
             block_id=data.get("block_id"),
+            derived_hash=data.get("derived_hash"),
         )
 
 
@@ -66,6 +76,8 @@ class Paper:
         created_at: Creation timestamp
         modified_at: Last modification timestamp
         tags: Additional Anki tags to apply to generated cards
+        show_chapter_bar: Show the chapter bar above this paper even when
+            Settings → Chapter bar is off (the toolbar's book button)
     """
 
     def __init__(
@@ -85,6 +97,7 @@ class Paper:
         self.created_at = time.time()
         self.modified_at = time.time()
         self.tags: List[str] = []
+        self.show_chapter_bar = False
 
     @property
     def full_path(self) -> str:
@@ -133,6 +146,7 @@ class Paper:
             "created_at": self.created_at,
             "modified_at": self.modified_at,
             "tags": self.tags,
+            "show_chapter_bar": bool(getattr(self, "show_chapter_bar", False)),
         }
 
     @classmethod
@@ -151,4 +165,5 @@ class Paper:
         paper.created_at = data.get("created_at", time.time())
         paper.modified_at = data.get("modified_at", time.time())
         paper.tags = data.get("tags", [])
+        paper.show_chapter_bar = bool(data.get("show_chapter_bar", False))
         return paper

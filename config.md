@@ -5,6 +5,21 @@
 - **theme**: UI theme - "auto" (follows Anki), "dark", or "light".
 - **font_size**: Editor font size in pixels.
 - **font_family**: Editor font family.
-- **show_line_numbers**: Show line numbers in the editor.
+- **show_line_numbers**: Show each line's number in a gutter on the left of the editor and Source view. The number is the line's real position in the paper, so folded sections leave a gap. On by default.
 - **basic_card_separator**: The separator syntax for basic cards (default: ">>").
 - **cloze_syntax**: Cloze syntax style - "curly_braces" uses {{text}}.
+- **weak_spot_markers**: Mark lines whose cards you keep missing in Anki (amber: 3+ lapses, red: a suspended leech), with the review history on hover and a "weak spots" filter in the bottom bar. Read-only; on by default.
+- **text_replacements_enabled**: macOS only. Apply your macOS Text Replacements (System Settings → Keyboard → Text Replacements) as you type in the editor — type a shortcut, then Space or Return. On by default; Anki's web engine doesn't do this on its own.
+- **color_scheme**: The app's colors, which the Basic card style follows too: `"carolina"` (Carolina blue and #19468D), `"purple"` (the original purple), `"mono"` (black & white, keeping the green / amber / pink card-type colors) or `"crimson"` (crimson & white; cloze turns violet and links blue). Changing it in Settings restyles every Anki Papers card at once.
+- **card_style**: How your Anki cards look. `"basic"` is the built-in style; `"solarized"` is Solarized Styling (light in Anki's light mode, dark in dark mode). Changing it in Settings restyles every Anki Papers card at once. Each color scheme has its own version of both styles; `"purple"` keeps the classic Solarized palette.
+- **ai_enabled**: Show the AI features (Draft cards and Ask). On by default; turning it off hides every AI button.
+- **ai_provider**: `"anthropic"` (Claude), `"gemini"` (Google AI Studio) or `"openai"` (any OpenAI-compatible endpoint: OpenAI, OpenRouter, Ollama, LM Studio).
+- **ai_model_anthropic** / **ai_model_gemini** / **ai_model_openai**: The model used with each provider. Settings → AI → Test connection lists the models your key can use.
+- **ai_base_url**: For `"openai"` only: the endpoint address, e.g. `http://localhost:11434/v1` for Ollama. Empty means OpenAI itself.
+- **ai_card_types**: Which card types Draft cards may write, e.g. `{"basic": true, "reversible": true, "cloze": true}`.
+- **ai_card_rules**: The instructions sent with every draft. Empty means the built-in rules.
+- **ai_language**: The language for drafted cards and Ask answers; `"Same as the source"` by default.
+- API keys are **not** stored here. On macOS they are kept in your login Keychain (Settings → AI → Save key).
+- **toolbar_scroll**: `false` (default) lets the toolbar wrap onto a second line on a narrow window; `true` keeps it on one line that scrolls sideways.
+- **show_waiting_chapters**: `false` (default) hides them; `true` lists, faded in the sidebar, the chapters of a folder's book or course that don't have a paper yet, inside the folder they belong in. Click one to create its paper.
+- **show_chapter_bar**: `false` (default) shows the chapter bar (book, chapter, previous / next) only on papers where the toolbar's book button turned it on; `true` shows it on every paper that is a chapter of its folder's book or course, and grays out the toolbar button.

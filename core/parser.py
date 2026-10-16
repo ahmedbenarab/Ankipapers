@@ -15,6 +15,21 @@ import hashlib
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
 
+try:
+    from .code_blocks import code_block_crumb_html, code_line_map
+except ImportError:
+    # Loaded as a single file rather than as part of the package (see
+    # tests/test_sub_sup.py, which can point at the installed add-on's copy).
+    import importlib.util as _ilu
+    import os as _os
+
+    _spec = _ilu.spec_from_file_location(
+        "ap_code_blocks", _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "code_blocks.py")
+    )
+    _cb = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_cb)
+    code_block_crumb_html, code_line_map = _cb.code_block_crumb_html, _cb.code_line_map
+
 
 @dataclass
 class ParsedCard:
@@ -28,7 +43,9 @@ class ParsedCard:
     cloze_text: str  # For cloze cards (with Anki {{c1::...}} syntax)
     content_hash: str
     block_id: Optional[str] = None  # stable id from <!--ap:uuid--> suffix
-
+    supplement: str = ""
+    inline_tags: List[str] = None  # Add this to store our [[tags]]
+    
     @property
     def is_valid(self) -> bool:
         if self.card_type in ("basic", "reversible"):
@@ -53,7 +70,13 @@ class ParsedLine:
 # ─── Regex Patterns ────────────────────────────────────────────
 
 # Basic card: "Question >> Answer"
-BASIC_CARD_PATTERN = re.compile(r"^(.*?)\s*>>\s*(.+)$")
+# The (?<!</su[bp]) and (?<!</[bui]) guards: a subscript, superscript, bold,
+# underline or italic
+# closing tag written flush against the separator ("CO<sub>2</sub>>> gas") puts
+# a ">" right before it, and without the guards the split would land inside the
+# tag. Mirrors BASIC_CARD_RE in web_src/src/blockFormat.js -- the two have to
+# agree.
+BASIC_CARD_PATTERN = re.compile(r"^(.*?)(?<!</su[bp])(?<!</[bui])\s*>>\s*(.+)$")
 
 # Reversible card: "Front <> Back"
 REVERSIBLE_CARD_PATTERN = re.compile(r"^(.*?)\s*<>\s*(.+)$")
@@ -70,11 +93,63 @@ HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$")
 # Bullet point: - text or * text
 BULLET_PATTERN = re.compile(r"^(\s*)([-*])\s+(.+)$")
 
-# Stable block id suffix (hidden in source; stripped before card patterns / hash)
+# Stable block id suffix (hidden in source; stripped before card patterns / hash).
+# A run of the same anchor repeated counts as one: older Tab / Shift+Tab code
+# re-appended the anchor on every press, and the copies must not reach Anki.
 BLOCK_ID_SUFFIX = re.compile(
-    r"\s*<!--ap:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-->\s*$",
+    r"\s*<!--ap:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-->(?:<!--ap:\1-->)*\s*$",
     re.IGNORECASE,
 )
+
+# Inline tags: [[tag]]
+INLINE_TAG_PATTERN = re.compile(r"\[\[(.*?)\]\]")
+
+
+# ─── Inline markdown ────────────────────────────────────────────────────────
+#
+# These live here rather than in card_manager because breadcrumbs need them
+# too, and card_manager already imports from this module — the reverse would
+# be circular. card_manager imports them back out, so there is still exactly
+# one definition of what a bold or a code span turns into.
+
+IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+# Document links: [phrase](ap://paperId#blockId). Rendered as styled text —
+# they are not clickable inside Anki, but the phrase must never show up as raw
+# markdown on a card.
+AP_LINK_RE = re.compile(r"(?<!!)\[([^\]\[]+)\]\(ap://([^)\s]+)\)")
+BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
+STRIKE_RE = re.compile(r"~~(.+?)~~")
+CODE_RE = re.compile(r"`([^`]+?)`")
+MATH_BLOCK_RE = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
+MATH_INLINE_RE = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)")
+
+
+def md_inline_to_html(text: str) -> str:
+    """Convert lightweight inline markdown to HTML."""
+    if not text:
+        return text
+    r = text
+    r = MATH_BLOCK_RE.sub(r"\\[\1\\]", r)
+    r = MATH_INLINE_RE.sub(r"\\(\1\\)", r)
+    r = IMG_RE.sub(r'<img src="\2">', r)
+    r = AP_LINK_RE.sub(r'<span class="ap-link">\1</span>', r)
+    r = BOLD_RE.sub(r"<b>\1</b>", r)
+    r = ITALIC_RE.sub(r"<i>\1</i>", r)
+    r = STRIKE_RE.sub(r"<s>\1</s>", r)
+    r = CODE_RE.sub(r"<code>\1</code>", r)
+    return r
+
+# Supplement marker at the start of a line: "&& background text".
+# The space after && is optional — "&&text" was previously matched by nothing
+# at all, so the line became neither a card nor a supplement and quietly
+# reached Anki by no route whatsoever.
+SUPPLEMENT_PREFIX = re.compile(r"^&&[ \t]*")
+
+# A line holding nothing but an image. Such a line cannot be a card and has no
+# other meaning in the format, so the only thing its author can have intended
+# is "show this picture with the card above".
+IMAGE_ONLY_LINE = re.compile(r"^!\[[^\]]*\]\([^)]+\)$")
 
 
 def split_stable_block_id(text: str) -> Tuple[str, Optional[str]]:
@@ -88,15 +163,39 @@ def split_stable_block_id(text: str) -> Tuple[str, Optional[str]]:
 
 
 def inject_stable_block_id(content: str, line_index: int, block_id: str) -> str:
-    """Append <!--ap:uuid--> to a line if not already present."""
+    """Append <!--ap:uuid--> to a line if not already present.
+
+    The anchor is written flush against the text, with no separating space.
+    This matches ensureApBlockId() in web_src/src/docLinks.js, and it is not
+    cosmetic: the editor's AP_BLOCK_ID_TAIL regex deliberately does not
+    swallow whitespace in front of the anchor (a space typed at the end of a
+    line is the last character at the moment it is pressed, so stripping it
+    made the space bar appear dead on any anchored line). An anchor written
+    as "text <!--ap:...-->" would therefore leave a trailing space visible in
+    the editor on every card line. Write it the way the editor writes it.
+    """
     lines = content.split("\n")
     if line_index < 0 or line_index >= len(lines):
         return content
     line = lines[line_index]
     if BLOCK_ID_SUFFIX.search(line):
         return content
-    lines[line_index] = line.rstrip() + f" <!--ap:{block_id}-->"
+    lines[line_index] = line.rstrip() + f"<!--ap:{block_id}-->"
     return "\n".join(lines)
+
+
+def inject_stable_block_ids(content: str, assignments) -> str:
+    """Apply inject_stable_block_id for many (line_index, block_id) pairs.
+
+    Injection never changes the number of lines, so line indices stay valid
+    across the whole batch. Lines that already carry an anchor are left
+    untouched, so this is idempotent.
+    """
+    for line_index, block_id in assignments:
+        if not block_id:
+            continue
+        content = inject_stable_block_id(content, line_index, block_id)
+    return content
 
 
 def compute_hash(text: str) -> str:
@@ -153,6 +252,26 @@ def parse_line(index: int, line: str) -> ParsedLine:
 
     card_content, stable_block_id = split_stable_block_id(card_content)
 
+    # If the line is meant to be a Supplement (&&), treat it as plain text 
+    # so it bypasses the card-creation regex below.
+    if SUPPLEMENT_PREFIX.match(card_content):
+        return ParsedLine(
+            index=index,
+            raw_text=line,
+            line_type="text",
+            heading_level=0,
+            indent_level=indent_level,
+            card=None,
+        )
+        
+    # Extract and remove inline tags (e.g., [[nh]])
+    inline_tags = []
+    def extract_tag(match):
+        inline_tags.append(match.group(1).strip())
+        return ""
+        
+    card_content = INLINE_TAG_PATTERN.sub(extract_tag, card_content).strip()
+    
     # Check for reversible card (Front <> Back) - must check before basic
     reversible_match = REVERSIBLE_CARD_PATTERN.match(card_content)
     if reversible_match:
@@ -168,6 +287,7 @@ def parse_line(index: int, line: str) -> ParsedLine:
             cloze_text="",
             content_hash=content_hash,
             block_id=stable_block_id,
+            inline_tags=inline_tags,
         )
         return ParsedLine(
             index=index,
@@ -193,6 +313,7 @@ def parse_line(index: int, line: str) -> ParsedLine:
             cloze_text="",
             content_hash=content_hash,
             block_id=stable_block_id,
+            inline_tags=inline_tags,
         )
         return ParsedLine(
             index=index,
@@ -219,6 +340,7 @@ def parse_line(index: int, line: str) -> ParsedLine:
             cloze_text=cloze_text,
             content_hash=content_hash,
             block_id=stable_block_id,
+            inline_tags=inline_tags,
         )
         return ParsedLine(
             index=index,
@@ -272,17 +394,151 @@ def convert_to_anki_cloze(text: str) -> str:
 def parse_document(content: str) -> List[ParsedLine]:
     """Parse an entire document and return a list of ParsedLine objects."""
     lines = content.split("\n")
-    return [parse_line(i, line) for i, line in enumerate(lines)]
+    parsed = [parse_line(i, line) for i, line in enumerate(lines)]
+    # Inside a ``` block nothing is card syntax: ">>" is a shift, "{{" is a
+    # Rust format escape, "#" is a comment. The fences and code lines become
+    # plain text lines.
+    for i in code_line_map(lines):
+        parsed[i].card = None
+        parsed[i].line_type = "code"
+        parsed[i].heading_level = 0
+    return parsed
+
+
+def supplement_text_from_child(child_content: str) -> Optional[str]:
+    """What a child line contributes to its parent card's Supplement, or None.
+
+    Two shapes qualify:
+
+      "&& background text"   the explicit marker (the space after && is
+                             optional)
+      "![alt](picture.png)"  a line that is nothing but an image
+
+    The second is here because such a line used to reach Anki through no path
+    at all: it is not a card, and without the "&&" it was not collected as a
+    supplement either, so a picture placed under a card rendered in the editor
+    and then silently failed to appear on the card. Bare *text* lines are
+    still ignored on purpose — those are notes the author deliberately kept
+    off the card.
+    """
+    text = (child_content or "").strip()
+    if not text:
+        return None
+
+    marker = SUPPLEMENT_PREFIX.match(text)
+    if marker:
+        return text[marker.end():].strip()
+
+    # An image line may carry a hidden <!--ap:uuid--> anchor if something links
+    # to it, so test (and store) the line with the anchor removed — otherwise
+    # the anchor both defeats the match and lands in the card's HTML.
+    body, _ = split_stable_block_id(text)
+    body = body.strip()
+    if IMAGE_ONLY_LINE.match(body):
+        return body
+
+    return None
 
 
 def extract_cards(content: str) -> List[ParsedCard]:
     """Extract all cards from a document."""
     parsed_lines = parse_document(content)
     cards = []
-    for line in parsed_lines:
+    for i, line in enumerate(parsed_lines):
         if line.card and line.card.is_valid:
+            supplement_texts = []
+            card_indent = line.indent_level
+            
+            # Lookahead for child lines
+            for j in range(i + 1, len(parsed_lines)):
+                next_line = parsed_lines[j]
+                stripped_raw = next_line.raw_text.rstrip()
+                
+                # Skip completely empty lines
+                if not stripped_raw.strip():
+                    continue
+                    
+                # Stop if we hit a line at the same or higher hierarchy level
+                if next_line.indent_level <= card_indent:
+                    break
+                    
+                # Process ONLY direct children (exactly 1 level deeper)
+                if next_line.indent_level == card_indent + 1:
+                    # Extract content (removing potential bullet prefixes)
+                    child_content = stripped_raw.lstrip()
+                    bullet_match = BULLET_PATTERN.match(stripped_raw)
+                    if bullet_match:
+                        child_content = bullet_match.group(3)
+                        
+                    supp = supplement_text_from_child(child_content)
+                    if supp:
+                        supplement_texts.append(supp)
+            
+            # Assign to the card and append
+            line.card.supplement = "<br>".join(supplement_texts)
             cards.append(line.card)
+            
     return cards
+
+# Card syntax that should read as an arrow inside a breadcrumb: a parent line
+# which is itself a card shows as "Question → Answer", the way the editor
+# draws it.
+_CRUMB_ARROWS = ((">>", "\u2192"), ("<>", "\u21D4"))
+_CODE_SPAN_SPLIT = re.compile(r"(`[^`]+`)")
+
+# What separates one block crumb from the next on a card. Emitted here rather
+# than joining with " > " and having card_manager rewrite that to <br>: any
+# crumb whose own text contained " > " (say "use when x > y") had that turned
+# into a line break too.
+BREADCRUMB_SEP = "<br>"
+
+
+def render_breadcrumb_crumb(text: str) -> str:
+    """One breadcrumb crumb, rendered the way the card should show it.
+
+    Two jobs, both of which used to be done badly somewhere else.
+
+    Card syntax becomes arrows. That was a chain of str.replace() applied to
+    the finished HTML in card_manager, so it rewrote every ">>", " > " and "<>"
+    it could find anywhere in the string — inside markup, inside attributes and
+    inside code.
+
+    Inline markdown becomes HTML. That was four regexes that threw the
+    formatting away — bold and italic markers were deleted and the text kept —
+    and backticks were not in the list at all, so `code` reached the card with
+    its backticks intact.
+
+    Code spans are held out of the arrow substitution: between backticks, ">>"
+    is a shift operator and "<>" is not-equal, neither of them a card.
+
+    Underscores are deliberately not treated as emphasis, here or on a card
+    body: "__init__" and "my_var" are far more common in these notes than
+    _emphasis_, and italicizing them would corrupt the code they appear in.
+    """
+    if not text:
+        return text
+    parts = _CODE_SPAN_SPLIT.split(text)
+    for i, part in enumerate(parts):
+        if len(part) > 1 and part.startswith("`") and part.endswith("`"):
+            continue
+        for src, dst in _CRUMB_ARROWS:
+            part = part.replace(src, dst)
+        parts[i] = part
+    return md_inline_to_html("".join(parts))
+
+
+def _strip_breadcrumb_tags(text: str) -> str:
+    """Remove [[tags]] from a line that is being shown as a breadcrumb.
+
+    A tag such as [[NH]] is an instruction to Anki Papers, not something the
+    author wrote to read back. It already does its job by tagging the card, so
+    printing the literal "[[NH]]" in a child card's breadcrumb is just noise.
+    Everything else on the line is kept exactly as written -- that text is the
+    context the breadcrumb exists to show.
+    """
+    cleaned = INLINE_TAG_PATTERN.sub(" ", text)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
 
 def get_block_breadcrumbs(content: str, line_index: int) -> List[str]:
     lines = content.split("\n")
@@ -303,12 +559,30 @@ def get_block_breadcrumbs(content: str, line_index: int) -> List[str]:
 
     breadcrumbs = []
     current_indent = card_level
+    code_lines = code_line_map(lines)
 
-    for i in range(line_index - 1, -1, -1):
+    i = line_index
+    while i > 0:
+        i -= 1
         line = lines[i]
         stripped = line.strip()
         if not stripped:
             continue
+
+        # A ``` block is one unit: its parent level is its opening fence's,
+        # and the whole block becomes a single code crumb. Nothing inside it
+        # is examined line by line -- a Python "# comment" is not a heading.
+        block = code_lines.get(i)
+        if block is not None:
+            block_level = get_indent(lines[block.open])
+            if block_level < current_indent:
+                breadcrumbs.insert(0, code_block_crumb_html(lines, block))
+                current_indent = block_level
+            i = block.open
+            if current_indent == 0:
+                break
+            continue
+
         if stripped.startswith('#'):
             break
 
@@ -319,7 +593,13 @@ def get_block_breadcrumbs(content: str, line_index: int) -> List[str]:
             # Remove bullet/number prefixes
             clean_text = re.sub(r'^[-*+]\s+', '', stripped)
             clean_text = re.sub(r'^\d+\.\s+', '', clean_text)
-            clean_text = clean_text.strip()
+            # A supplement line ("&& a note") can be the parent of a card. The
+            # ampersands are Anki Papers syntax marking the line as a comment,
+            # not part of what was written, so they must not show up in the
+            # breadcrumb on the card. Stripped after the bullet prefixes, which
+            # is the same order parse_line() uses.
+            clean_text = re.sub(r'^&&\s*', '', clean_text)
+            clean_text = _strip_breadcrumb_tags(clean_text)
 
             # ----- IMPROVED IMAGE HANDLING (Markdown + HTML) -----
             def markdown_replacer(m):
@@ -359,11 +639,10 @@ def get_block_breadcrumbs(content: str, line_index: int) -> List[str]:
             # Clean up any remaining empty placeholder
             clean_text = re.sub(r'\[Image:\s*\]', '[Image]', clean_text)
 
-            # Strip other markdown formatting
-            clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_text)
-            clean_text = re.sub(r'__(.*?)__', r'\1', clean_text)
-            clean_text = re.sub(r'\*(.*?)\*', r'\1', clean_text)
-            clean_text = re.sub(r'_(.*?)_', r'\1', clean_text)
+            # Render what the author wrote, rather than deleting the markers.
+            # Runs after the image handling above so the [Image: …] placeholders
+            # it produces are never re-matched as markdown.
+            clean_text = render_breadcrumb_crumb(clean_text)
 
             if clean_text:
                 breadcrumbs.insert(0, clean_text)
@@ -385,24 +664,35 @@ def get_context_heading(content: str, line_index: int) -> str:
     lines = content.split("\n")
     headings = {}  # level -> heading text
     current_min_level = 4  # Track the highest hierarchy level we've seen (1 is highest)
+    code_lines = code_line_map(lines)
 
     for i in range(line_index, -1, -1):
+        if i in code_lines:
+            continue
         heading_match = HEADING_PATTERN.match(lines[i].strip())
         if heading_match:
             level = len(heading_match.group(1))
             # Restrict to H1-H3, and ONLY accept if it's a structural parent of what we already have
             if level <= 3 and level < current_min_level:
-                text = heading_match.group(2).strip()
+                text = render_breadcrumb_crumb(_strip_breadcrumb_tags(heading_match.group(2)))
                 headings[level] = text
                 current_min_level = level
                 if level == 1:
                     break
 
-    # 1. Build the heading path
+    # 1. Build the heading path: one span per level so the card CSS can size
+    #    H1/H2/H3 differently (.ap-crumb-h1/2/3 in card_manager._ANKIPAPERS_CSS).
+    #    Levels stack one per line, as the card has always shown them; the
+    #    separator span carries the line break so the crumbs keep that layout
+    #    and the H1 underline cannot bleed into a separator.
     heading_path = ""
     if headings:
         sorted_levels = sorted(headings.keys())
-        heading_path = " > ".join(headings[l] for l in sorted_levels)
+        crumbs = [
+            f'<span class="ap-crumb ap-crumb-h{l}">{headings[l]}</span>'
+            for l in sorted_levels
+        ]
+        heading_path = '<span class="ap-crumb-sep"><br></span>'.join(crumbs)
 
     # 2. Get the block parent path
     block_path_list = get_block_breadcrumbs(content, line_index)
@@ -412,7 +702,13 @@ def get_context_heading(content: str, line_index: int) -> str:
     if heading_path:
         context_html += f'<div class="ap-meta-heading">{heading_path}</div>'
     if block_path_list:
-        block_path_str = " > ".join(block_path_list)
+        # A code crumb is a block element; a <br> beside it would only add a
+        # blank line.
+        block_path_str = ""
+        for k, crumb in enumerate(block_path_list):
+            if k and not crumb.startswith("<div") and not block_path_list[k - 1].startswith("<div"):
+                block_path_str += BREADCRUMB_SEP
+            block_path_str += crumb
         context_html += f'<div class="ap-meta-block">{block_path_str}</div>'
         
     return context_html

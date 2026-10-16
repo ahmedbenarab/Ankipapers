@@ -38,10 +38,17 @@ function extractCardContent(line) {
  */
 
 /* Compact MD5 — produces same output as Python hashlib.md5().hexdigest() */
-function md5(str) {
+// K is a fixed constant table (derived from sin()) — build it once at module
+// load instead of recomputing it on every md5() call. Same values, just not
+// redone thousands of times per keystroke on documents with many cards.
+const MD5_K = (() => {
   const k = []
   for (let i = 0; i < 64; i++) k[i] = (Math.abs(Math.sin(i + 1)) * 0x100000000) >>> 0
+  return k
+})()
 
+function md5(str) {
+  const k = MD5_K
   const bytes = []
   for (let i = 0; i < str.length; i++) {
     const c = str.charCodeAt(i)
@@ -98,5 +105,42 @@ export function resolveNoteIdForLine(lineIndex, lineText, cardRefs) {
   }
 
   const byLine = cardRefs.find((r) => r.line_index === lineIndex)
+  return byLine?.anki_note_id != null ? byLine.anki_note_id : null
+}
+
+/**
+ * Indexed variant of the above, for callers that need to resolve the note
+ * ID for MANY lines against the same card_refs array (e.g. rendering every
+ * card block in a document). resolveNoteIdForLine() rescans the whole
+ * card_refs array (twice) per call, which is fine for a single lookup but
+ * turns into O(cards²) work when called once per card in the document on
+ * every keystroke. buildCardRefIndex() does that scan once; resolveNoteIdFromIndex()
+ * then does an O(1) Map lookup per line, with identical match semantics
+ * ("first entry with this content_hash / this line_index wins", exactly
+ * matching what Array.prototype.find() above returns).
+ */
+export function buildCardRefIndex(cardRefs) {
+  const byHash = new Map()
+  const byLine = new Map()
+  if (Array.isArray(cardRefs)) {
+    for (const r of cardRefs) {
+      if (r && r.content_hash != null && !byHash.has(r.content_hash)) byHash.set(r.content_hash, r)
+      if (r && r.line_index != null && !byLine.has(r.line_index)) byLine.set(r.line_index, r)
+    }
+  }
+  return { byHash, byLine }
+}
+
+export function resolveNoteIdFromIndex(lineIndex, lineText, index) {
+  if (!index || (index.byHash.size === 0 && index.byLine.size === 0)) return null
+
+  const cardContent = extractCardContent(lineText)
+  if (cardContent) {
+    const hash = computeHash(cardContent)
+    const byHash = index.byHash.get(hash)
+    if (byHash?.anki_note_id != null) return byHash.anki_note_id
+  }
+
+  const byLine = index.byLine.get(lineIndex)
   return byLine?.anki_note_id != null ? byLine.anki_note_id : null
 }

@@ -49,7 +49,7 @@ def _get_field_text(paper: Any, fname: str) -> str:
     if fname == "title":
         return (paper.title or "").lower()
     if fname == "content":
-        return (paper.content or "").lower()
+        return _searchable(paper.content or "")
     if fname == "folder":
         return (paper.folder_path or "").lower()
     if fname == "deck":
@@ -64,7 +64,7 @@ def _haystack_default(paper: Any) -> str:
     tags = getattr(paper, "tags", None) or []
     parts = [
         paper.title or "",
-        paper.content or "",
+        _searchable(paper.content or ""),
         paper.folder_path or "",
         paper.deck_name or "",
         " ".join(str(t) for t in tags if t),
@@ -196,33 +196,74 @@ def parse_paper_search(query: str) -> List[SearchBranch]:
     return [parse_branch(part) for part in split_or_branches(query)]
 
 
-def _snippet_around(content: str, idx: int, length: int, radius: int = 48) -> str:
-    start = max(0, idx - radius)
-    end = min(len(content), idx + length + radius)
-    frag = content[start:end].replace("\n", " ")
-    return ("..." if start > 0 else "") + frag + ("..." if end < len(content) else "")
+# ─── Line-level hits ─────────────────────────────────────────────────────
+# Search reports every matching line as "Document › H1 › H2 › H3 · line N"
+# rather than a text excerpt. The heading path uses the same rule as a card's
+# breadcrumb (parser.get_context_heading): the nearest H1–H3 above the line
+# that is a structural parent of it, including the line itself if it is one.
+
+MAX_LINE_HITS = 200  # per paper; the sidebar caps the combined list too
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
+_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+_AP_COMMENT_RE = re.compile(r"<!--ap(?:-[a-z]+)?:[^>]*-->", re.IGNORECASE)
+_MD_LINK_RE = re.compile(r"(?<!!)\[([^\]\[]+)\]\([^)\s]+\)")
+_TAG_RE = re.compile(r"\[\[[^\]]*\]\]")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_MARKS_RE = re.compile(r"\*\*|__|~~|`|\$|(?<![\w])\*|\*(?![\w])")
 
 
-def build_snippet(paper: Any, br: SearchBranch) -> str:
-    content = paper.content or ""
-    if not content:
-        return ""
-    cl = content.lower()
-    for fname, needle in br.fields:
-        if fname == "content" and needle and needle in cl:
-            return _snippet_around(content, cl.index(needle), len(needle))
-    for t in br.terms:
-        if t and t in cl:
-            return _snippet_around(content, cl.index(t), len(t))
-    for fname, needle in br.fields:
-        if fname != "content" and needle and needle in cl:
-            return _snippet_around(content, cl.index(needle), len(needle))
-    return ""
+def _searchable(line: str) -> str:
+    """A line as search sees it: hidden anchors and link targets removed, so
+    a search never "finds" a uuid or an ap:// address the reader can't see."""
+    return _MD_LINK_RE.sub(r"\1", _AP_COMMENT_RE.sub("", line)).lower()
+
+
+def _heading_text(raw: str) -> str:
+    t = _AP_COMMENT_RE.sub("", raw)
+    t = _MD_LINK_RE.sub(r"\1", t)
+    t = _TAG_RE.sub("", t)
+    t = _HTML_TAG_RE.sub("", t)
+    t = _MARKS_RE.sub("", t)
+    return " ".join(t.split())
+
+
+def _line_needles(br: SearchBranch) -> List[str]:
+    return [t for t in br.terms if t] + [n for f, n in br.fields if f == "content" and n]
+
+
+def find_line_hits(paper: Any, br: SearchBranch, limit: int = MAX_LINE_HITS) -> Tuple[List[Dict[str, Any]], int]:
+    """Every content line holding any of the branch's words, with its H1–H3
+    path. Returns (hits, total); hits stops at `limit`, total does not.
+    `line` is 0-based; the UI shows line + 1, matching the editor gutter."""
+    needles = _line_needles(br)
+    if not needles:
+        return [], 0
+    hits: List[Dict[str, Any]] = []
+    total = 0
+    path: List[Optional[str]] = [None, None, None]  # current H1, H2, H3
+    in_fence = False
+    for i, line in enumerate((paper.content or "").split("\n")):
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+        elif not in_fence:
+            m = _HEADING_RE.match(line.strip())
+            if m and len(m.group(1)) <= 3:
+                level = len(m.group(1))
+                path[level - 1] = _heading_text(m.group(2)) or None
+                for deeper in range(level, 3):
+                    path[deeper] = None
+        text = _searchable(line)
+        if any(n in text for n in needles):
+            total += 1
+            if len(hits) < limit:
+                hits.append({"line": i, "path": [h for h in path if h]})
+    return hits, total
 
 
 def match_flags(paper: Any, br: SearchBranch) -> Dict[str, bool]:
     title_l = (paper.title or "").lower()
-    cl = (paper.content or "").lower()
+    cl = _searchable(paper.content or "")
     folder_l = (paper.folder_path or "").lower()
     deck_l = (paper.deck_name or "").lower()
     tags_l = " ".join((t or "").lower() for t in (getattr(paper, "tags", None) or []))
@@ -266,14 +307,15 @@ def search_papers_advanced(papers: List[Any], query: str) -> List[Dict[str, Any]
         if matched is None:
             continue
         flags = match_flags(p, matched)
-        snippet = build_snippet(p, matched)
+        lines, lines_total = find_line_hits(p, matched)
         out.append(
             {
                 "id": p.id,
                 "title": p.title,
                 "folder_path": p.folder_path,
                 "deck_name": getattr(p, "deck_name", "") or "",
-                "snippet": snippet,
+                "lines": lines,
+                "lines_total": lines_total,
                 **flags,
             }
         )

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Globe, ChevronRight, ChevronLeft, Plus, X, FileX2, ExternalLink } from 'lucide-react'
-import { pickPdfFile, openUrl } from '../bridge'
+import { pickPdfFile, openUrl, getPdfViewerUrl, getPdfUrl } from '../bridge'
 
 /** Valid http(s) URL for preview / browser (adds https:// when missing). */
 function normalizeWebUrl(raw) {
@@ -29,30 +29,43 @@ export default function SourcePanel({ source, onSourceChange, onExtract, onClose
   const normalizedWebSrc = useMemo(() => normalizeWebUrl(source?.url || ''), [source?.url])
 
   useEffect(() => {
+    // Mirrors the stored source.url into the (user-editable) URL input
+    // whenever the panel's source changes; pre-existing pattern, unrelated
+    // to the D3 PDF-server work in this file.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (mode === 'web' && source?.url) setWebUrl(source.url)
   }, [mode, source?.url])
 
-  // Build the file:// URL for the viewer HTML (same directory as index.html)
-  const viewerUrl = useRef(
-    (() => {
-      const base = document.baseURI || window.location.href
-      const dir = base.substring(0, base.lastIndexOf('/') + 1)
-      return dir + 'pdf_viewer.html'
-    })()
-  )
+  // The PDF viewer is served by the add-on's own local HTTP server (D3) so
+  // pdf.js can XHR the PDF bytes from the same origin; fetched once on mount.
+  const [viewerUrl, setViewerUrl] = useState(null)
+
+  useEffect(() => {
+    let canceled = false
+    getPdfViewerUrl().then((r) => {
+      if (canceled) return
+      if (r?.url) setViewerUrl(r.url)
+      else console.error('[AnkiPapers] getPdfViewerUrl failed', r)
+    })
+    return () => { canceled = true }
+  }, [])
 
   // Track when the iframe is ready
   const iframeReady = useRef(false)
   const pendingPath = useRef(null)
 
-  const sendLoadCmd = useCallback((path) => {
+  const sendLoadCmd = useCallback(async (path) => {
     const iframe = iframeRef.current
     if (!iframe?.contentWindow || !iframeReady.current) {
       pendingPath.current = path
       return
     }
-    const url = 'file:///' + path.replace(/\\/g, '/')
-    iframe.contentWindow.postMessage({ source: 'ankipapers', cmd: 'load', url }, '*')
+    const r = await getPdfUrl(path)
+    if (!r?.url) {
+      console.error('[AnkiPapers] getPdfUrl failed', r)
+      return
+    }
+    iframe.contentWindow.postMessage({ source: 'ankipapers', cmd: 'load', url: r.url }, '*')
     pendingPath.current = null
   }, [])
 
@@ -70,11 +83,15 @@ export default function SourcePanel({ source, onSourceChange, onExtract, onClose
     if (pendingPath.current) sendLoadCmd(pendingPath.current)
   }, [sendLoadCmd])
 
-  // When source path changes, load PDF or clear viewer
+  // When source path changes, load PDF or clear viewer. Genuine side effect
+  // (postMessage to the viewer iframe via sendClearCmd/sendLoadCmd) that also
+  // resets local pager state; pre-existing pattern, unrelated to the D3
+  // PDF-server work in this file.
   useEffect(() => {
     if (mode !== 'pdf') return
     if (!source?.path) {
       sendClearCmd()
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTotalPages(0)
       setPage(1)
       setSelPopup(null)
@@ -220,13 +237,15 @@ export default function SourcePanel({ source, onSourceChange, onExtract, onClose
 
       <div className="sp-view" ref={viewRef}>
         {mode === 'pdf' ? (
-          <iframe
-            ref={iframeRef}
-            title="PDF Viewer"
-            src={viewerUrl.current}
-            className="sp-pdf-frame"
-            onLoad={onIframeLoad}
-          />
+          viewerUrl ? (
+            <iframe
+              ref={iframeRef}
+              title="PDF Viewer"
+              src={viewerUrl}
+              className="sp-pdf-frame"
+              onLoad={onIframeLoad}
+            />
+          ) : null
         ) : (
           normalizedWebSrc ? (
             <iframe title="Web preview" src={normalizedWebSrc} className="sp-web-frame" referrerPolicy="no-referrer-when-downgrade" />

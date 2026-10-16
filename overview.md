@@ -18,7 +18,7 @@ Use this document as a basis for your listing on **AnkiWeb** or other share page
 
 - **Papers** — Each paper is a markdown document with a title, optional folder path, and target deck for new cards.
 - **Folders** — Nested folder tree in the sidebar; drag papers and folders to reorganize; context menu to rename, remove, or move a folder to the root.
-- **Editors** — **Block** view (line/block-oriented) or **Source** view (raw markdown); toggle with **Ctrl+Shift+V**.
+- **Editors** — **Block** view (line/block-oriented) or **Source** view (raw markdown); toggle with **Ctrl+Shift+E**.
 - **Card syntax (in the paper)**  
   - Basic: `Question >> Answer`  
   - Reversible: `Term <> Definition`  

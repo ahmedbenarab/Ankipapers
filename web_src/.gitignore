@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Dev-only test files (a sample book for the Attach a book dialog)
+.devtest/

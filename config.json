@@ -5,6 +5,16 @@
     "font_family": "JetBrains Mono",
     "editor_theme": "dark",
     "show_card_indicators": true,
+    "show_line_numbers": true,
     "reversible_separator": "<>",
-    "basic_separator": ">>"
+    "basic_separator": ">>",
+    "text_replacements_enabled": true,
+    "card_style": "basic",
+    "color_scheme": "carolina",
+    "weak_spot_markers": true,
+    "ai_enabled": true,
+    "ai_provider": "anthropic",
+    "toolbar_scroll": false,
+    "show_waiting_chapters": false,
+    "show_chapter_bar": false
 }

@@ -45,3 +45,6 @@ Desktop.ini
 # Env / secrets
 .env
 .env.*
+
+# Anki writes this per install (saved settings, enabled flag); not part of the add-on
+meta.json

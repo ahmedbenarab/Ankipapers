@@ -12,6 +12,11 @@ Author: Dr. Ahmed Benarab
 from aqt import mw, gui_hooks
 from aqt.qt import QAction, QKeySequence, QTimer
 
+# Serve everything under web/ at {mw.serverURL()}_addons/<package>/web/<path>
+# (gui/webview.py loads web/index.html from there; see the migration brief's
+# D1 for why file:// loading was replaced with Anki's media server).
+mw.addonManager.setWebExports(__name__, r"web/.*")
+
 
 def open_anki_papers(source=None):
     """Open the Anki Papers window."""
@@ -99,3 +104,9 @@ gui_hooks.top_toolbar_did_init_links.append(
         )
     )
 )
+
+# Keep Tools → Check Media from listing (and Delete Unused from trashing) the
+# pictures papers show but no card uses. See gui/media_protect.py.
+from .gui.media_protect import protect_paper_media  # noqa: E402
+
+gui_hooks.media_check_did_finish.append(protect_paper_media)

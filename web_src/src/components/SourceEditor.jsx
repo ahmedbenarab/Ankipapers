@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback,
 import { ExternalLink } from 'lucide-react'
 import { openInBrowser } from '../bridge'
 import { getLineIndexAtCursor, getLineTextAtIndex, resolveNoteIdForLine } from '../crossLink'
+import { BASIC_CARD_RE, toggleTagSegment, findTextReplacement } from '../blockFormat'
 
 // ─── Card Counting ──────────────────────────────────
 function countCards(text) {
@@ -17,7 +18,7 @@ function countCards(text) {
       continue
     }
     // Basic card: Q >> A
-    if (/^.+?\s*>>\s*.+$/.test(cardContent)) {
+    if (BASIC_CARD_RE.test(cardContent)) {
       basic++
       continue
     }
@@ -31,9 +32,12 @@ function countCards(text) {
 
 // ─── Format Actions Map ─────────────────────────────
 const formatActions = {
-  bold: (ta) => wrapSelection(ta, '**', '**'),
-  italic: (ta) => wrapSelection(ta, '*', '*'),
+  bold: (ta) => toggleTagInTextarea(ta, 'b'),
+  italic: (ta) => toggleTagInTextarea(ta, 'i'),
   strikethrough: (ta) => wrapSelection(ta, '~~', '~~'),
+  subscript: (ta) => toggleTagInTextarea(ta, 'sub'),
+  superscript: (ta) => toggleTagInTextarea(ta, 'sup'),
+  underline: (ta) => toggleTagInTextarea(ta, 'u'),
   inlineCode: (ta) => wrapSelection(ta, '`', '`'),
   h1: (ta) => prefixLine(ta, '# '),
   h2: (ta) => prefixLine(ta, '## '),
@@ -72,6 +76,14 @@ const formatActions = {
 }
 
 function getSelection(ta) { return ta.value.substring(ta.selectionStart, ta.selectionEnd) }
+
+// Same toggle as the block editor, applied to the whole source text.
+function toggleTagInTextarea(ta, tag) {
+  const r = toggleTagSegment(ta.value, ta.selectionStart, ta.selectionEnd, tag)
+  ta.value = r.line
+  ta.selectionStart = r.selStart; ta.selectionEnd = r.selEnd
+  ta.focus(); ta.dispatchEvent(new Event('input', { bubbles: true }))
+}
 
 function wrapSelection(ta, prefix, suffix) {
   const start = ta.selectionStart, end = ta.selectionEnd
@@ -250,30 +262,28 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
 }
 
+// Source view is plain black on white, so a line is just its escaped text.
+// (The layer it goes in only positions line numbers and highlights; the
+// visible text is the textarea's own.)
 function highlightLine(line) {
-  let h = escapeHtml(line)
-
-  h = h.replace(/(\{\{c\d+::.+?\}\}|\{\{.+?\}\})/g, '<span class="src-syn-cloze">$1</span>')
-  h = h.replace(/(\s&lt;&gt;\s)/g, '<span class="src-syn-reversible">$1</span>')
-  h = h.replace(/(\s&gt;&gt;\s)/g, '<span class="src-syn-basic">$1</span>')
-  h = h.replace(/(\*\*[^*]+\*\*)/g, '<span class="src-syn-bold">$1</span>')
-  h = h.replace(/(^|[^*])(\*[^*\n]+\*)/g, '$1<span class="src-syn-italic">$2</span>')
-
-  if (/^#{1,6}\s/.test(line)) {
-    h = `<span class="src-syn-heading">${h}</span>`
-  }
-  return h
+  return escapeHtml(line)
 }
 
+// One block per line, so each line can be found (to center and highlight it
+// when a search result lands here) and so a soft-wrapped line keeps a single
+// number beside its first row; the number is drawn in the left padding by
+// CSS (.with-line-numbers .src-line::before). An empty line holds a
+// zero-width space so it keeps its height, and the extra empty block stands in
+// for the trailing newline so caret alignment stays accurate.
 function highlightMarkdown(text) {
   const lines = (text || '').split('\n')
-  const html = lines.map(highlightLine).join('\n')
-  // Keep trailing newline visible in overlay so caret alignment stays accurate.
-  return html + '\n'
+  return lines
+    .map((l, i) => `<span class="src-line" data-line="${i + 1}">${highlightLine(l) || '\u200b'}</span>`)
+    .join('') + '<span class="src-line">\u200b</span>'
 }
 
 // ─── Component ──────────────────────────────────────
-const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCardCountChange, settings, cardRefs }, ref) {
+const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCardCountChange, settings, cardRefs, textReplacements = null, onHistoryCheckpoint }, ref) {
   const textareaRef = useRef(null)
   const overlayRef = useRef(null)
   const countTimerRef = useRef(null)
@@ -301,6 +311,29 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
   }, [cardRefs])
 
   useImperativeHandle(ref, () => ({
+    // Put the caret at the start of a line (0-based), center it, and give it
+    // the same brief highlight the editor uses. Used when a search result or
+    // link lands while Source view is open.
+    goToLine: (lineIndex) => {
+      const ta = textareaRef.current
+      if (!ta || lineIndex == null || lineIndex < 0) return
+      const lines = ta.value.split('\n')
+      const idx = Math.min(lineIndex, lines.length - 1)
+      let offset = 0
+      for (let i = 0; i < idx; i++) offset += lines[i].length + 1
+      ta.focus({ preventScroll: true })
+      ta.setSelectionRange(offset, offset)
+      const lineEl = overlayRef.current?.querySelector(`.src-line[data-line="${idx + 1}"]`)
+      if (lineEl) {
+        ta.scrollTop = Math.max(0, lineEl.offsetTop + lineEl.offsetHeight / 2 - ta.clientHeight / 2)
+        overlayRef.current.scrollTop = ta.scrollTop // keep the highlight layer in step
+        lineEl.classList.remove('src-line-revealed')
+        void lineEl.offsetWidth // restart the animation if it is already running
+        lineEl.classList.add('src-line-revealed')
+        setTimeout(() => lineEl.classList.remove('src-line-revealed'), 2400)
+      }
+      bumpCursor()
+    },
     applyFormat: (action, extra) => {
       if (textareaRef.current) {
         if (action === 'insertImageMd' && extra) {
@@ -337,6 +370,34 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
   useEffect(() => { bumpCursor() }, [content, cardRefs, bumpCursor])
 
   const handleKeyDown = useCallback((e) => {
+    // macOS Text Replacements: the same rules as the block editor (see
+    // findTextReplacement), applied to the line the cursor is on.
+    const isSpaceKey = e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey
+    const isReturnKey = e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+    const ta = textareaRef.current
+    if ((isSpaceKey || isReturnKey) && textReplacements && ta && !e.nativeEvent?.isComposing
+        && ta.selectionStart === ta.selectionEnd) {
+      const caret = ta.selectionStart
+      const value = ta.value
+      const lineStart = value.lastIndexOf('\n', caret - 1) + 1
+      const lineEnd = value.indexOf('\n', caret)
+      const lineText = value.slice(lineStart, lineEnd === -1 ? value.length : lineEnd)
+      const hit = findTextReplacement(lineText, caret - lineStart, textReplacements)
+      if (hit) {
+        e.preventDefault()
+        onHistoryCheckpoint?.()   // first Ctrl+Z brings the shortcut back
+        const at = lineStart + hit.start
+        // On a table row a line break would split the row and break the
+        // table, so a phrase written on several lines goes in as one.
+        const phrase = /^\s*\|/.test(lineText) ? hit.phrase.replace(/\s*\n\s*/g, ' ') : hit.phrase
+        const insert = phrase + (isSpaceKey ? ' ' : '\n')
+        ta.value = value.slice(0, at) + insert + value.slice(caret)
+        ta.selectionStart = ta.selectionEnd = at + insert.length
+        ta.dispatchEvent(new Event('input', { bubbles: true }))
+        bumpCursor()
+        return
+      }
+    }
     if (e.key === 'Tab') {
       e.preventDefault()
       const ta = textareaRef.current, start = ta.selectionStart, end = ta.selectionEnd
@@ -345,11 +406,15 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
       ta.dispatchEvent(new Event('input', { bubbles: true }))
       bumpCursor()
     }
-  }, [bumpCursor])
+  }, [bumpCursor, textReplacements, onHistoryCheckpoint])
 
   const fontSize = settings?.font_size || 14
   const fontFamily = settings?.font_family || "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace"
-  const highlightedHtml = useMemo(() => highlightMarkdown(content), [content])
+  const showLineNumbers = settings?.show_line_numbers !== false
+  // A stable object, not just a stable string: React re-sets innerHTML
+  // whenever this prop's object changes, which on every cursor move would
+  // rebuild the whole layer and wipe a line's highlight class.
+  const highlightedHtml = useMemo(() => ({ __html: highlightMarkdown(content) }), [content])
 
   const syncScroll = useCallback(() => {
     const ta = textareaRef.current
@@ -381,13 +446,13 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
       <div className="source-editor-stack" style={{ fontSize, fontFamily }}>
         <pre
           ref={overlayRef}
-          className="source-editor-highlight"
+          className={`source-editor-highlight ${showLineNumbers ? 'with-line-numbers' : ''}`}
           aria-hidden="true"
-          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+          dangerouslySetInnerHTML={highlightedHtml}
         />
         <textarea
           ref={textareaRef}
-          className="source-editor source-editor-overlay"
+          className={`source-editor source-editor-overlay ${showLineNumbers ? 'with-line-numbers' : ''}`}
           value={content}
           onInput={handleInput}
           onScroll={syncScroll}

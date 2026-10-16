@@ -6,6 +6,9 @@ import { AlertTriangle } from 'lucide-react'
  */
 export default function GenerateConflictModal({ conflicts, onCancel, onKeepAnki, onUsePaper }) {
   const n = conflicts?.length ?? 0
+  // A folder-wide check labels each conflict with its paper.
+  const yourPaper = new Set((conflicts || []).map((c) => c.paper_title).filter(Boolean)).size > 1
+    ? 'your papers' : 'your paper'
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal generate-conflict-modal" onClick={(e) => e.stopPropagation()}>
@@ -15,13 +18,15 @@ export default function GenerateConflictModal({ conflicts, onCancel, onKeepAnki,
         </div>
         <p className="generate-conflict-intro">
           {n === 1
-            ? 'One synced line still matches your paper, but its Anki note no longer matches (likely edited in Browse or the note editor).'
-            : `${n} synced lines still match your paper, but their Anki notes no longer match.`}{' '}
+            ? `One synced line still matches ${yourPaper}, but its Anki note no longer matches (likely edited in Browse or the note editor).`
+            : `${n} synced lines still match ${yourPaper}, but their Anki notes no longer match.`}{' '}
           Choose how to continue.
         </p>
         <ul className="generate-conflict-list">
           {conflicts.map((c, i) => (
             <li key={`${c.anki_note_id}-${c.line_index}-${i}`}>
+              {/* Set when the check spans a whole folder, to say which paper. */}
+              {c.paper_title ? <strong className="generate-conflict-paper">{c.paper_title}</strong> : null}
               <span className="generate-conflict-type">{c.card_type}</span>
               line {c.line_index + 1}
               {c.block_id ? <span className="generate-conflict-id"> · block {c.block_id.slice(0, 8)}…</span> : null}

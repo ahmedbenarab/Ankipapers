@@ -24,20 +24,32 @@
     background: #fff;
   }
   .page-wrap canvas { display: block; }
+  /* The text you select sits invisibly over the drawn page. These rules are
+     pdf.js 3.11's own text-layer styles: its span sizes and positions are
+     calc(var(--scale-factor) * …), so without them (and --scale-factor, set
+     per page below) every line lands in the wrong place and selections
+     spill across columns. */
   .textLayer {
-    position: absolute; inset: 0;
+    position: absolute; text-align: initial; inset: 0;
     overflow: hidden; line-height: 1;
-    pointer-events: all;
+    -webkit-text-size-adjust: none; text-size-adjust: none;
+    forced-color-adjust: none; transform-origin: 0 0; z-index: 2;
   }
-  .textLayer span {
+  .textLayer :is(span, br) {
     color: transparent; position: absolute;
     white-space: pre; cursor: text;
     transform-origin: 0% 0%;
   }
-  .textLayer ::selection {
-    background: rgba(108,99,255,.35);
-    color: transparent;
+  .textLayer span.markedContent { top: 0; height: 0; }
+  .textLayer ::selection { background: rgba(75, 156, 211, .35); color: transparent; }
+  .textLayer br::selection { background: transparent; }
+  /* Keeps a drag-selection from jumping to the top of the page when the
+     pointer leaves the text (pdf.js's endOfContent). */
+  .textLayer .endOfContent {
+    display: block; position: absolute; inset: 100% 0 0; z-index: -1;
+    cursor: default; -webkit-user-select: none; user-select: none;
   }
+  .textLayer .endOfContent.active { top: 0; }
   .textLayer span.ap-quote-flash {
     background: rgba(108, 99, 255, 0.42) !important;
     border-radius: 2px;
@@ -72,6 +84,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 let pdfDoc = null, totalPages = 0;
+// Only pages rangeStart..rangeEnd are shown (a book chapter); 1..totalPages otherwise.
+let rangeStart = 1, rangeEnd = 0;
+let pageObserver = null;
 
 function clearPdf() {
   pdfDoc = null;
@@ -86,8 +101,10 @@ function clearPdf() {
   notifyParent('closed', {});
 }
 
-function loadPdf(url) {
-  document.getElementById('empty').style.display = 'none';
+function loadPdf(url, opts) {
+  opts = opts || {};
+  var empty = document.getElementById('empty');
+  if (empty) empty.style.display = 'none';
   document.getElementById('loading').classList.add('visible');
   var vc = document.getElementById('viewer');
   vc.innerHTML = '';
@@ -96,9 +113,14 @@ function loadPdf(url) {
   pdfjsLib.getDocument({ url: url }).promise.then(function(doc) {
     pdfDoc = doc;
     totalPages = doc.numPages;
+    rangeStart = Math.max(1, parseInt(opts.start, 10) || 1);
+    rangeEnd = Math.min(totalPages, parseInt(opts.end, 10) || totalPages);
+    if (rangeEnd < rangeStart) { rangeStart = 1; rangeEnd = totalPages; }
     document.getElementById('loading').classList.remove('visible');
     renderAllPages();
-    notifyParent('loaded', { pages: totalPages });
+    notifyParent('loaded', { pages: totalPages, start: rangeStart, end: rangeEnd });
+    if (opts.quote) runScrollToQuote(opts.quote, opts.page || rangeStart);
+    else if (opts.page) setTimeout(function () { goToPage(opts.page); }, 60);
   }).catch(function(err) {
     document.getElementById('loading').classList.remove('visible');
     var vc2 = document.getElementById('viewer');
@@ -107,10 +129,34 @@ function loadPdf(url) {
   });
 }
 
+// Pages get a placeholder of the right size at once and are drawn only when
+// they scroll near the view, so a 3,000-page book opens as fast as a leaflet.
 function renderAllPages() {
   var vc = document.getElementById('viewer');
   vc.innerHTML = '';
-  for (var i = 1; i <= totalPages; i++) renderPage(i, vc);
+  if (pageObserver) pageObserver.disconnect();
+  pageObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (en.isIntersecting && !en.target.dataset.drawn) {
+        en.target.dataset.drawn = '1';
+        drawPage(parseInt(en.target.dataset.page, 10), en.target);
+      }
+    });
+  }, { root: vc, rootMargin: '800px 0px' });
+  pdfDoc.getPage(rangeStart).then(function (first) {
+    var cw = vc.clientWidth - 20;
+    var unscaled = first.getViewport({ scale: 1 });
+    var scale = Math.max(0.5, cw / unscaled.width);
+    for (var i = rangeStart; i <= rangeEnd; i++) {
+      var wrap = document.createElement('div');
+      wrap.className = 'page-wrap';
+      wrap.dataset.page = i;
+      wrap.style.width = Math.floor(unscaled.width * scale) + 'px';
+      wrap.style.height = Math.floor(unscaled.height * scale) + 'px';
+      vc.appendChild(wrap);
+      pageObserver.observe(wrap);
+    }
+  });
 }
 
 function renderPage(num, container) {
@@ -118,7 +164,10 @@ function renderPage(num, container) {
   wrap.className = 'page-wrap';
   wrap.dataset.page = num;
   container.appendChild(wrap);
+  drawPage(num, wrap);
+}
 
+function drawPage(num, wrap) {
   pdfDoc.getPage(num).then(function(page) {
     var cw = document.getElementById('viewer').clientWidth - 20;
     var unscaled = page.getViewport({ scale: 1 });
@@ -128,6 +177,7 @@ function renderPage(num, container) {
 
     wrap.style.width = viewport.width + 'px';
     wrap.style.height = viewport.height + 'px';
+    wrap.style.setProperty('--scale-factor', viewport.scale);
 
     var canvas = document.createElement('canvas');
     canvas.width = Math.floor(viewport.width * dpr);
@@ -151,7 +201,12 @@ function renderPage(num, container) {
           textContentSource: tc,
           container: textDiv,
           viewport: viewport,
-        }).promise.catch(function() {});
+        }).promise.then(function() {
+          var end = document.createElement('div');
+          end.className = 'endOfContent';
+          textDiv.appendChild(end);
+          textDiv.addEventListener('mousedown', function() { end.classList.add('active'); });
+        }).catch(function() {});
       });
     });
   });
@@ -225,7 +280,7 @@ function scrollToQuote(quote, preferredPage) {
   var pp = parseInt(preferredPage, 10) || 1;
   if (pp >= 1 && pp <= totalPages) order.push(pp);
   var p = 1;
-  for (p = 1; p <= totalPages; p++) {
+  for (p = rangeStart; p <= (rangeEnd || totalPages); p++) {
     if (p !== pp) order.push(p);
   }
   for (var oi = 0; oi < order.length; oi++) {
@@ -257,14 +312,64 @@ function runScrollToQuote(quote, page) {
   setTimeout(attempt, 120);
 }
 
+// Plain text of pages from..to (for Ask and for drafting a whole page).
+function getText(from, to) {
+  if (!pdfDoc) return Promise.resolve('');
+  from = Math.max(1, from || rangeStart); to = Math.min(totalPages, to || from);
+  var jobs = [];
+  for (var i = from; i <= to; i++) {
+    jobs.push(pdfDoc.getPage(i).then(function (pg) {
+      return pg.getTextContent().then(function (tc) {
+        var out = '', lastY = null;
+        tc.items.forEach(function (it) {
+          var y = it.transform ? it.transform[5] : null;
+          if (lastY !== null && y !== null && Math.abs(y - lastY) > 2) out += '\n';
+          out += it.str;
+          if (it.hasEOL) out += '\n';
+          lastY = y;
+        });
+        return '[Page ' + pg.pageNumber + ']\n' + out.replace(/[ \t]+/g, ' ').trim();
+      });
+    }));
+  }
+  return Promise.all(jobs).then(function (parts) { return parts.join('\n\n'); });
+}
+
+// Bookmarks flattened to [{title, page, level}], plus the page labels the PDF
+// carries (printed page numbers), for "Attach a book".
+function getOutline() {
+  if (!pdfDoc) return Promise.resolve({ items: [], labels: null, pages: 0 });
+  var out = [];
+  function walk(items, level) {
+    var chain = Promise.resolve();
+    (items || []).forEach(function (it) {
+      chain = chain.then(function () {
+        var dest = it.dest;
+        var p = typeof dest === 'string' ? pdfDoc.getDestination(dest) : Promise.resolve(dest);
+        return p.then(function (d) {
+          if (!d || !d[0]) return null;
+          return typeof d[0] === 'object' ? pdfDoc.getPageIndex(d[0]) : Promise.resolve(d[0]);
+        }).catch(function () { return null; }).then(function (idx) {
+          if (idx !== null && idx !== undefined) out.push({ title: (it.title || '').trim(), page: idx + 1, level: level });
+          if (level < 2) return walk(it.items, level + 1);
+        });
+      });
+    });
+    return chain;
+  }
+  return pdfDoc.getOutline().then(function (outline) { return walk(outline, 0); })
+    .then(function () { return pdfDoc.getPageLabels().catch(function () { return null; }); })
+    .then(function (labels) { return { items: out, labels: labels, pages: totalPages }; });
+}
+
 function getVisiblePage() {
   var vc = document.getElementById('viewer');
   var wraps = vc.querySelectorAll('.page-wrap');
-  var top = vc.scrollTop;
+  var top = vc.scrollTop + 40;
   for (var i = 0; i < wraps.length; i++) {
     if (wraps[i].offsetTop + wraps[i].offsetHeight > top) return parseInt(wraps[i].dataset.page || '1');
   }
-  return 1;
+  return rangeStart || 1;
 }
 
 function notifyParent(type, data) {
@@ -279,7 +384,10 @@ window.addEventListener('message', function(e) {
   var d = e.data;
   if (!d || d.source !== 'ankipapers') return;
   if (d.cmd === 'clear') clearPdf();
-  if (d.cmd === 'load') loadPdf(d.url);
+  if (d.cmd === 'load') loadPdf(d.url, d);
+  if (d.cmd === 'getText') getText(d.from, d.to).then(function (t) { notifyParent('text', { id: d.id, text: t }); });
+  if (d.cmd === 'getOutline') getOutline().then(function (o) { notifyParent('outline', { id: d.id, outline: o }); })
+    .catch(function (e) { notifyParent('outline', { id: d.id, outline: { items: [], labels: null, pages: totalPages }, error: String(e) }); });
   if (d.cmd === 'goToPage') goToPage(d.page);
   if (d.cmd === 'scrollToQuote') runScrollToQuote(d.quote || '', d.page || 1);
 });
@@ -290,13 +398,53 @@ document.getElementById('viewer').addEventListener('scroll', function() {
 });
 
 document.addEventListener('mouseup', function() {
+  document.querySelectorAll('.endOfContent.active').forEach(function (el) { el.classList.remove('active'); });
   setTimeout(function() {
     var sel = window.getSelection();
     var text = (sel ? sel.toString() : '').trim();
     if (text) {
-      notifyParent('selection', { text: text, page: getVisiblePage() });
+      var page = getVisiblePage(), rect = null;
+      try {
+        var r = sel.getRangeAt(0);
+        var node = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+        var wrap = node && node.closest ? node.closest('.page-wrap') : null;
+        if (wrap) page = parseInt(wrap.dataset.page, 10) || page;
+        var b = r.getBoundingClientRect();
+        rect = { top: b.top, left: b.left, bottom: b.bottom, right: b.right };
+      } catch (e) {}
+      notifyParent('selection', { text: text, page: page, rect: rect });
+    } else {
+      notifyParent('selection', { text: '', page: getVisiblePage() });
     }
   }, 10);
+});
+
+/*
+ * Copy as one line. pdf.js ends every rendered line with a <br>, so a plain
+ * copy carries a hard break wherever the PDF wrapped, and pasting it into the
+ * editor made one block per printed line. Same rules as normalizePastedText in
+ * BlockEditor.jsx: words hyphenated across a break are rejoined, a hyphen
+ * that only happened to wrap is kept, and every other break becomes a space.
+ */
+function flattenCopiedText(raw) {
+  return String(raw || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/­/g, '')
+    // "propa-" + break + "gation" -> "propagation" (lowercase both sides only)
+    .replace(/([a-z])[-‐‑]\n\s*([a-z])/g, '$1$2')
+    // "ST-" + break + "elevation" -> "ST-elevation"
+    .replace(/([A-Za-z])([-‐‑])\n\s*([A-Za-z])/g, '$1$2$3')
+    .replace(/\s*\n\s*/g, ' ')
+    .replace(/[ \t  - ]+/g, ' ')
+    .trim();
+}
+
+document.addEventListener('copy', function(e) {
+  var sel = window.getSelection();
+  var text = flattenCopiedText(sel ? sel.toString() : '');
+  if (!text || !e.clipboardData) return;
+  e.clipboardData.setData('text/plain', text);
+  e.preventDefault();
 });
 
 var resizeTimer;

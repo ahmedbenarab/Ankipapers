@@ -6,14 +6,14 @@ const KNOWN = new Set(['title', 'content', 'folder', 'deck', 'tag']);
 
 function haystack(p) {
   const tags = p.tags || [];
-  return [p.title, p.content, p.folder_path, p.deck_name, tags.join(' ')]
-    .map((x) => String(x || '').toLowerCase())
+  return [String(p.title || '').toLowerCase(), searchable(p.content), String(p.folder_path || '').toLowerCase(),
+    String(p.deck_name || '').toLowerCase(), tags.join(' ').toLowerCase()]
     .join('\n');
 }
 
 function fieldText(p, fname) {
   if (fname === 'title') return String(p.title || '').toLowerCase();
-  if (fname === 'content') return String(p.content || '').toLowerCase();
+  if (fname === 'content') return searchable(p.content);
   if (fname === 'folder') return String(p.folder_path || '').toLowerCase();
   if (fname === 'deck') return String(p.deck_name || '').toLowerCase();
   if (fname === 'tag') return (p.tags || []).map((t) => String(t || '').toLowerCase()).join(' ');
@@ -147,36 +147,60 @@ function branchMatches(p, b) {
   return true;
 }
 
-function snippetAround(content, idx, len, radius = 48) {
-  const start = Math.max(0, idx - radius);
-  const end = Math.min(content.length, idx + len + radius);
-  const frag = content.slice(start, end).replace(/\n/g, ' ');
-  return `${start > 0 ? '...' : ''}${frag}${end < content.length ? '...' : ''}`;
+// ─── Line-level hits (mirror of find_line_hits in core/search_query.py) ───
+// Every matching line, with the H1–H3 path above it — the same rule as a
+// card's breadcrumb, including the line itself if it is a heading.
+
+const MAX_LINE_HITS = 200;
+const HEADING_RE = /^(#{1,6})\s+(.+)$/;
+const FENCE_RE = /^\s*(```|~~~)/;
+const AP_COMMENT_RE = /<!--ap(?:-[a-z]+)?:[^>]*-->/gi;
+const MD_LINK_RE = /(?<!!)\[([^\][]+)\]\([^)\s]+\)/g;
+const TAG_RE = /\[\[[^\]]*\]\]/g;
+const HTML_TAG_RE = /<[^>]+>/g;
+const MARKS_RE = /\*\*|__|~~|`|\$|(?<![\w])\*|\*(?![\w])/g;
+
+// Hidden anchors and link targets removed, so a search never "finds" a uuid
+// or an ap:// address the reader can't see.
+function searchable(text) {
+  return String(text || '').replace(AP_COMMENT_RE, '').replace(MD_LINK_RE, '$1').toLowerCase();
 }
 
-function buildSnippet(p, b) {
-  const content = p.content || '';
-  if (!content) return '';
-  const cl = content.toLowerCase();
-  for (const [f, needle] of b.fields) {
-    if (f === 'content' && needle && cl.includes(needle)) {
-      return snippetAround(content, cl.indexOf(needle), needle.length);
+function headingText(raw) {
+  return raw.replace(AP_COMMENT_RE, '').replace(MD_LINK_RE, '$1').replace(TAG_RE, '')
+    .replace(HTML_TAG_RE, '').replace(MARKS_RE, '').split(/\s+/).filter(Boolean).join(' ');
+}
+
+function findLineHits(p, b, limit = MAX_LINE_HITS) {
+  const needles = [...b.terms.filter(Boolean), ...b.fields.filter(([f, n]) => f === 'content' && n).map(([, n]) => n)];
+  if (!needles.length) return { lines: [], total: 0 };
+  const lines = [];
+  let total = 0;
+  const path = [null, null, null];
+  let inFence = false;
+  String(p.content || '').split('\n').forEach((line, i) => {
+    if (FENCE_RE.test(line)) {
+      inFence = !inFence;
+    } else if (!inFence) {
+      const m = line.trim().match(HEADING_RE);
+      if (m && m[1].length <= 3) {
+        const level = m[1].length;
+        path[level - 1] = headingText(m[2]) || null;
+        for (let d = level; d < 3; d++) path[d] = null;
+      }
     }
-  }
-  for (const t of b.terms) {
-    if (t && cl.includes(t)) return snippetAround(content, cl.indexOf(t), t.length);
-  }
-  for (const [f, needle] of b.fields) {
-    if (f !== 'content' && needle && cl.includes(needle)) {
-      return snippetAround(content, cl.indexOf(needle), needle.length);
+    const text = searchable(line);
+    if (needles.some((n) => text.includes(n))) {
+      total++;
+      if (lines.length < limit) lines.push({ line: i, path: path.filter(Boolean) });
     }
-  }
-  return '';
+  });
+  return { lines, total };
 }
 
 function matchFlags(p, b) {
   const titleL = String(p.title || '').toLowerCase();
-  const cl = String(p.content || '').toLowerCase();
+  const cl = searchable(p.content);
   const folderL = String(p.folder_path || '').toLowerCase();
   const deckL = String(p.deck_name || '').toLowerCase();
   const tagsL = (p.tags || []).map((t) => String(t || '').toLowerCase()).join(' ');
@@ -212,12 +236,14 @@ export function searchPapersAdvanced(papers, query) {
     }
     if (!matched) continue;
     const flags = matchFlags(p, matched);
+    const { lines, total } = findLineHits(p, matched);
     out.push({
       id: p.id,
       title: p.title,
       folder_path: p.folder_path,
       deck_name: p.deck_name || '',
-      snippet: buildSnippet(p, matched),
+      lines,
+      lines_total: total,
       ...flags,
     });
   }
