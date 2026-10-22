@@ -41,6 +41,11 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 
 ## What's new
 
+**Image occlusion from your pictures.**
+- **Create Image Occlusion Cards:** right-click a picture in a paper and choose **Create Image Occlusion Cards**. Anki's Add window opens on its built-in **Image Occlusion** note type, with the picture already in the mask editor and the deck set to the paper's deck. Draw your masks and press Add. See [Image occlusion](#image-occlusion).
+- **A count on the picture:** once a picture has occlusion cards, a small badge in its lower-right corner shows how many. It updates by itself when you add, edit or delete them in Anki.
+- **Click the badge to edit:** it opens those notes in Anki's Browser with the masks showing. Right-click → **Edit Image Occlusion Cards** does the same.
+
 **Draft cards with AI, sources beside your paper, and Ask.**
 - **Draft cards:** select some lines (or click into one) and press **Draft cards** on the toolbar, choose it from the right-click menu, or press `Ctrl+Shift+D`. Card lines written in your syntax (`>>`, `<>`, `{{c1::…}}`) appear under the passage as dashed drafts. They aren't saved and Generate skips them until you accept one (✓), which turns it into an ordinary line. Click a draft to edit it (Enter saves and accepts, Escape stops editing), ✗ discards it, ↻ redoes just that card, and Accept all / Discard all / Redraft work on the whole group. The bottom bar counts drafts apart from your cards.
 - **Sources:** the paperclip on the toolbar opens the Sources panel. Attach a PDF, Word, PowerPoint, HTML or text file, or a web page, to the open paper; files are copied into your Anki Papers folder and stay with the paper. PowerPoint and Word open in a reader view (slides with their speaker notes), and web pages are saved as a copy you can read offline. Select text in a source to **Add to notes**, **Draft cards** or **Ask**; lines added this way remember where they came from, and **Go to source** (right-click) reopens the page with the passage highlighted.
@@ -243,6 +248,22 @@ Murmur increases with Valsalva >> Hypertrophic cardiomyopathy [[NH]]
 ```
 
 Without `[[NH]]`, the card would helpfully announce the answer in its own header.
+
+### Image occlusion
+
+Hide parts of a picture and get asked what's underneath, using Anki's own **Image Occlusion** (built into Anki 23.10 and later; no other add-on needed).
+
+1. **Right-click a picture** in a paper and choose **Create Image Occlusion Cards**. Anki's Add window opens on the Image Occlusion note type, with the picture loaded in the mask editor and the deck set to the paper's deck.
+2. **Draw a mask** over each thing to hide, then press **Add**. Each mask (or group of masks) becomes one card.
+3. **Back in the paper**, the picture shows a small badge in its lower-right corner with the number of occlusion cards made from it. It updates as soon as you add, edit or delete them in Anki.
+4. **Click the badge** to open those notes in Anki's Browser, where the mask editor lets you move, add or remove masks. Right-click → **Edit Image Occlusion Cards** does the same.
+
+Good to know:
+
+- It works on pictures on a line of their own (`![caption](picture.png)`) that are stored in your Anki media folder. A picture inside a sentence, or a web image, doesn't get the menu item.
+- If the Add window already holds a note you haven't added, finish or clear it first; Anki Papers won't throw it away.
+- The occlusion notes are ordinary Anki notes. Generate never touches them, and deleting the picture's line from the paper leaves them in your collection.
+- The badge counts occlusion notes whose Image field shows that picture, so you can make several notes from one picture and they all count.
 
 ### Images, formatting, and maths
 
@@ -578,6 +599,8 @@ Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manife
 | `core/ai.py` | AI providers (Claude, Gemini, OpenAI-compatible), Keychain key storage, background jobs, draft parsing |
 | `core/sources.py` | Attached files and web sources, the chapter map, Word/PowerPoint/HTML reader views, web snapshots |
 | `gui/ai_sources.py` | Bridge commands for AI and sources |
+| `gui/occlusion.py` | Image occlusion: opens Anki's Add window on a picture, counts its cards, opens them in the Browser |
+| `core/occlusion.py` | Matches image occlusion notes to a paper's pictures |
 | `web_src/src/components/SourcesPanel.jsx` | The Sources panel |
 | `web_src/src/components/FolderSourceDialog.jsx` | Attach a book / web source to a folder |
 | `web_src/src/components/AskPanel.jsx` | Ask |

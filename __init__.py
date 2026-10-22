@@ -110,3 +110,9 @@ gui_hooks.top_toolbar_did_init_links.append(
 from .gui.media_protect import protect_paper_media  # noqa: E402
 
 gui_hooks.media_check_did_finish.append(protect_paper_media)
+
+# Recount the image occlusion badges on pictures whenever notes are added,
+# edited or deleted anywhere in Anki. See gui/occlusion.py.
+from .gui.occlusion import notify_occlusions_changed  # noqa: E402
+
+gui_hooks.operation_did_execute.append(notify_occlusions_changed)

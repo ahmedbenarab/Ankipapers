@@ -30,6 +30,7 @@ from ..core.media_refs import content_name
 from ..core.share import build_share, is_share, read_share, plan_import
 from .text_replacements import get_text_replacements
 from .ai_sources import AISourcesMixin
+from .occlusion import OcclusionMixin
 from ..core.search_query import search_papers_advanced
 from ..core.storage import (
     save_paper,
@@ -118,7 +119,7 @@ def _select_note_card_in_browser_table(browser, note_id: int) -> dict:
     return out
 
 
-class AnkiPapersBridge(AISourcesMixin):
+class AnkiPapersBridge(AISourcesMixin, OcclusionMixin):
     """Bridge object exposed to JavaScript via AnkiWebView's pycmd() channel."""
 
     def __init__(self, window=None):
@@ -176,6 +177,7 @@ class AnkiPapersBridge(AISourcesMixin):
             "get_web_browser": self.get_web_browser,
         }
         self._dispatch.update(self._ai_sources_dispatch())
+        self._dispatch.update(self._occlusion_dispatch())
 
     def handle(self, cmd: str):
         """Entry point wired to AnkiWebView.set_bridge_command().
@@ -546,12 +548,15 @@ class AnkiPapersBridge(AISourcesMixin):
             print(f"[Anki Papers] open_in_browser: invalid note id {note_id_str!r}")
             return {"ok": True}
 
-        query = f"nid:{note_id}"
+        self._show_notes_in_browser(f"nid:{note_id}", note_id)
+        return {"ok": True}
 
+    def _show_notes_in_browser(self, query: str, note_id: int):
+        """Search the Browser for `query` and select the first card of note_id."""
         browser = self._get_or_open_browser()
         if not browser:
             print("[Anki Papers] open_in_browser: could not open browser")
-            return {"ok": True}
+            return
 
         def do_search_and_select():
             try:
@@ -578,7 +583,6 @@ class AnkiPapersBridge(AISourcesMixin):
             QTimer.singleShot(100, select_card)
 
         QTimer.singleShot(100, do_search_and_select)
-        return {"ok": True}
 
     def _get_or_open_browser(self):
         """Open the Card Browser (or get existing) via aqt.dialogs."""

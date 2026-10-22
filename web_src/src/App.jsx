@@ -1815,6 +1815,7 @@ export default function App() {
                 <BlockEditor
                   key={paper.id}
                   ref={blockEditorRef}
+                  paperId={paper.id}
                   textReplacements={textReplacements}
                   onHistoryCheckpoint={handleHistoryCheckpoint}
                   content={paper.content}

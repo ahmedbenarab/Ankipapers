@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
-import { openInBrowser, pasteImage, getClipboardText } from '../bridge'
+import { openInBrowser, pasteImage, getClipboardText, getOcclusionCounts, createOcclusion, editOcclusion, OCCLUSIONS_CHANGED_EVENT } from '../bridge'
 import WeakSpotHover from './WeakSpotHover'
 import DraftGroup from './DraftGroup'
 import { buildCardRefIndex, resolveNoteIdFromIndex } from '../crossLink'
@@ -245,8 +245,19 @@ function LinkPreview({ url }) {
   )
 }
 
+// The media-folder file an image line shows, or null for a web or data
+// picture (only files in Anki's media folder can be occluded).
+const IMAGE_LINE_RE = /^!\[([^\]]*)\]\(([^)]+)\)$/
+function mediaImageName(line) {
+  const m = stripApBlockId(line || '').trim().match(IMAGE_LINE_RE)
+  if (!m) return null
+  const src = m[2].trim()
+  if (!src || /^(https?:|data:|file:|blob:|\/)/i.test(src) || src.includes('/') || src.includes('\\')) return null
+  return src
+}
+
 // ─── Rendered block ─────────────────────────────────
-function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses }) {
+function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion }) {
   const t = stripApBlockId(line).trim()
 
   // Cells come from the shared parseTableRow rather than a local copy. The
@@ -290,7 +301,20 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
       const imgStyle = { maxWidth: width ? `${width}px` : '400px' }
       return (
         <div className="block-image">
-          <img src={src} alt={altText} style={imgStyle} />
+          <span className="block-image-frame">
+            <img src={src} alt={altText} style={imgStyle} />
+            {occlusionCards > 0 && (
+              <button
+                type="button"
+                className="io-badge"
+                title={`${occlusionCards} image occlusion card${occlusionCards === 1 ? '' : 's'}. Click to edit them in Anki.`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onOpenOcclusion?.(m[2].trim()) }}
+              >
+                {occlusionCards}
+              </button>
+            )}
+          </span>
           {altText && <div className="block-image-caption">{altText}{width && <span className="block-image-size"> · {width}px</span>}</div>}
           <div className="block-image-resize">
             <button className="resize-btn" onClick={() => onResize?.('150')}>S</button>
@@ -460,6 +484,8 @@ function BlockContextMenu({
   createLinkHint,
   selectionCount,
   onDraftCards,
+  onCreateOcclusion,
+  onEditOcclusion,
 }) {
   const multi = selectionCount > 1
   useEffect(() => {
@@ -559,6 +585,16 @@ function BlockContextMenu({
           onClick={onGoToSource}
         >
           Go to source
+        </button>
+      )}
+      {onCreateOcclusion && (
+        <button type="button" className="block-context-menu-item" role="menuitem" onClick={onCreateOcclusion}>
+          Create Image Occlusion Cards
+        </button>
+      )}
+      {onEditOcclusion && (
+        <button type="button" className="block-context-menu-item" role="menuitem" onClick={onEditOcclusion}>
+          Edit Image Occlusion Cards
         </button>
       )}
       <button type="button" className="block-context-menu-item" role="menuitem" onClick={onPasteBlocks}>
@@ -684,6 +720,8 @@ const Block = React.memo(function Block({
   weakLapses = 0,
   codeInfo = null,
   codeActive = false,
+  occlusionCards = 0,
+  onOpenOcclusion,
 }) {
   const inputRef = useRef(null)
 
@@ -827,7 +865,7 @@ const Block = React.memo(function Block({
         ) : codeInfo ? (
           <CodeRow type={type} info={codeInfo} active={codeActive} text={actualText} depth={codeSplit ? codeSplit.depth : 0} />
         ) : (
-          <RenderBlock line={actualText} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} />
+          <RenderBlock line={actualText} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} />
         )}
       </div>
     </div>
@@ -872,7 +910,7 @@ function draftPlacement(lines, at) {
 }
 
 // ─── Block Editor ───────────────────────────────────
-const BlockEditor = forwardRef(function BlockEditor({ content, onChange, onCardCountChange, settings, mediaDir, cardRefs, onTableEditRequest, onGoToSource, onOpenDocLink, onRequestCreateLink, onNotify, papers = [], textReplacements = null, onHistoryCheckpoint, noteStats = null, weakOnly = false, onUnsuspendNote, onVisibleLineChange, draftGroup = null, onRequestDraft, onDraftAccept, onDraftDiscard, onDraftRedo, onDraftEdit, onDraftRedraft, onDraftCancel, onOpenAiSettings }, ref) {
+const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, onChange, onCardCountChange, settings, mediaDir, cardRefs, onTableEditRequest, onGoToSource, onOpenDocLink, onRequestCreateLink, onNotify, papers = [], textReplacements = null, onHistoryCheckpoint, noteStats = null, weakOnly = false, onUnsuspendNote, onVisibleLineChange, draftGroup = null, onRequestDraft, onDraftAccept, onDraftDiscard, onDraftRedo, onDraftEdit, onDraftRedraft, onDraftCancel, onOpenAiSettings }, ref) {
   const [focusedIndex, setFocusedIndex] = useState(null)
   const [selectedIndices, setSelectedIndices] = useState(() => new Set())
   const [selectionAnchor, setSelectionAnchor] = useState(null)
@@ -2069,6 +2107,63 @@ const BlockEditor = forwardRef(function BlockEditor({ content, onChange, onCardC
     closeBlockMenu()
   }, [blockMenu, content, onTableEditRequest, closeBlockMenu])
 
+  // ── Image occlusion ──────────────────────────────────────────────
+  // Cards made from each picture with Anki's built-in image occlusion:
+  // { [name]: { cards, note_ids } }. Recounted when the pictures change and
+  // whenever Anki adds, edits or deletes notes (gui/occlusion.py).
+  const [occlusions, setOcclusions] = useState({})
+  const imageNamesKey = useMemo(() => {
+    const names = new Set()
+    for (const l of content.split('\n')) {
+      const n = mediaImageName(l)
+      if (n) names.add(n)
+    }
+    return [...names].join('\n')
+  }, [content])
+  useEffect(() => {
+    if (!imageNamesKey) { setOcclusions({}); return }
+    let canceled = false
+    let timer = null
+    const recount = () => {
+      getOcclusionCounts(imageNamesKey.split('\n')).then((r) => {
+        if (!canceled && r && !r.error) setOcclusions(r.counts || {})
+      })
+    }
+    // One recount for a burst of changes (Add window, Browser edits).
+    const onChanged = () => { clearTimeout(timer); timer = setTimeout(recount, 250) }
+    recount()
+    window.addEventListener(OCCLUSIONS_CHANGED_EVENT, onChanged)
+    return () => {
+      canceled = true
+      clearTimeout(timer)
+      window.removeEventListener(OCCLUSIONS_CHANGED_EVENT, onChanged)
+    }
+  }, [imageNamesKey])
+
+  const openOcclusion = useCallback(async (name) => {
+    const r = await editOcclusion(name)
+    if (r?.error) notifyRef.current?.(r.error, 'error')
+  }, [])
+
+  const menuImageName = (() => {
+    const sel = blockMenu?.selection
+    if (!sel || sel.length !== 1) return null
+    return mediaImageName(content.split('\n')[sel[0]] || '')
+  })()
+  const createOcclusionAtMenu = useCallback(async () => {
+    const name = menuImageName
+    closeBlockMenu()
+    if (!name) return
+    const r = await createOcclusion(paperId, name)
+    // A busy Add window explains itself in Anki.
+    if (r?.error && r.error !== 'add_window_busy') notifyRef.current?.(r.error, 'error')
+  }, [menuImageName, paperId, closeBlockMenu])
+  const editOcclusionAtMenu = useCallback(() => {
+    const name = menuImageName
+    closeBlockMenu()
+    if (name) openOcclusion(name)
+  }, [menuImageName, openOcclusion, closeBlockMenu])
+
   const goToSourceAtMenu = useCallback(() => {
     const sel = blockMenu?.selection
     if (!sel || sel.length !== 1) return
@@ -3033,6 +3128,8 @@ const BlockEditor = forwardRef(function BlockEditor({ content, onChange, onCardC
                 onZettelSearch={handleZettelSearch}
                 weakStatus={weak?.status || null}
                 weakLapses={weak?.lapses || 0}
+                occlusionCards={displayType === 'image' ? (occlusions[mediaImageName(displayLine)]?.cards || 0) : 0}
+                onOpenOcclusion={openOcclusion}
                 codeInfo={b.code || null}
                 codeActive={!!b.code && focusedIndex !== null && focusedIndex >= b.code.open && focusedIndex <= b.code.close}
               />
@@ -3100,6 +3197,8 @@ const BlockEditor = forwardRef(function BlockEditor({ content, onChange, onCardC
           }
           selectionCount={blockMenu.selection?.length ?? 1}
           onDraftCards={onRequestDraft ? draftAtMenu : null}
+          onCreateOcclusion={menuImageName ? createOcclusionAtMenu : null}
+          onEditOcclusion={menuImageName && occlusions[menuImageName]?.cards > 0 ? editOcclusionAtMenu : null}
         />
       )}
       {lasso && (

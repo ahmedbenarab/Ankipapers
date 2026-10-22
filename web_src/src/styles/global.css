@@ -1364,6 +1364,20 @@ textarea.block-input.block-input-textarea {
 .block-image { margin: 8px 0; text-align: center; position: relative; }
 .block-image img { max-width: 400px; border-radius: var(--radius-md); border: 1px solid var(--border); transition: all var(--transition); }
 .block-image:hover img { border-color: var(--accent); }
+/* The frame hugs the picture so the occlusion badge can sit on its bottom
+   edge, 5px in from the right. */
+.block-image-frame { position: relative; display: inline-block; max-width: 100%; line-height: 0; vertical-align: top; }
+.io-badge {
+  position: absolute; right: 5px; bottom: 0;
+  min-width: 25px; height: 25px; padding: 0 6px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--on-accent); border: none; border-radius: 6px 6px 0 0;
+  font-family: var(--font-sans); font-size: 12px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.25);
+  transition: filter var(--transition);
+}
+.io-badge:hover { filter: brightness(1.12); }
 .block-image-caption { font-size: 12px; color: var(--text-muted); font-style: italic; margin-top: 4px; }
 .block-image-size { color: var(--accent); font-style: normal; font-size: 11px; }
 .block-image-resize {

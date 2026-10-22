@@ -23,6 +23,7 @@ import {
   Braces,
   Globe,
   Share,
+  Image as ImageIcon,
 } from 'lucide-react'
 
 function formatRelativeTime(modifiedAt) {
@@ -65,6 +66,7 @@ function RefGroup({ icon: Icon, title, blurb, children }) {
 const GUIDE_TOPICS = [
   { id: 'start', icon: Sparkles, label: 'Start here' },
   { id: 'flashcards', icon: FileText, label: 'Making flashcards' },
+  { id: 'occlusion', icon: ImageIcon, label: 'Image occlusion' },
   { id: 'organizing', icon: Hash, label: 'Organizing notes' },
   { id: 'code', icon: Braces, label: 'Code blocks' },
   { id: 'linking', icon: Link2, label: 'Linking papers' },
@@ -345,6 +347,35 @@ export default function WelcomeScreen({
                   the built-in Basic look and Solarized Styling: a calm, color-coded
                   style that is light in Anki's light mode and dark in dark mode.
                   Saving restyles every card at once, phone included after a sync.
+                </Ref>
+              </RefGroup>
+          )}
+          {guide === 'occlusion' && (
+              <RefGroup
+                icon={ImageIcon}
+                title="Image occlusion"
+                blurb="Hide parts of a picture and get asked what's underneath, using Anki's own Image Occlusion. It works on any picture on a line of its own."
+              >
+                <Ref code="Right-click a picture" tone="key">
+                  Choose <strong>Create Image Occlusion Cards</strong>. Anki's Add window
+                  opens with the picture already loaded and the deck set to this paper's
+                  deck. Draw a box over each thing to hide, then press Add. Each box (or
+                  group of boxes) becomes one card.
+                </Ref>
+                <Ref code="The number on a picture" tone="key">
+                  Once a picture has occlusion cards, a small badge in its lower-right
+                  corner shows how many. It updates by itself when you add, edit or
+                  delete them in Anki.
+                </Ref>
+                <Ref code="Click the number" tone="key">
+                  Opens those notes in Anki's Browser with the masks showing, so you can
+                  move, add or remove them. Right-click → <strong>Edit Image Occlusion
+                  Cards</strong> does the same.
+                </Ref>
+                <Ref code="Good to know" tone="muted">
+                  If the Add window already holds a note you haven't added, finish or
+                  clear it first. Only pictures in your Anki media folder can be
+                  occluded, and Generate never changes or removes these cards.
                 </Ref>
               </RefGroup>
           )}

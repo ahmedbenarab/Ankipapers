@@ -245,6 +245,24 @@ export async function shareFolder(folderPath) {
   return call('share_folder', { folder_path: folderPath });
 }
 
+// Image occlusion with Anki's built-in tool (gui/occlusion.py). Counts are
+// { [name]: { cards, note_ids } } for the pictures that have any.
+export async function getOcclusionCounts(names) {
+  return call('occlusion_counts', { names: names || [] });
+}
+export async function createOcclusion(paperId, name) {
+  return call('occlusion_create', { paper_id: paperId, name });
+}
+export async function editOcclusion(name) {
+  return call('occlusion_edit', { name });
+}
+// Python calls this after any note is added, edited or deleted in Anki;
+// open editors listen for the event and recount their pictures.
+export const OCCLUSIONS_CHANGED_EVENT = 'ankipapers:occlusions-changed';
+if (typeof window !== 'undefined') {
+  window.ankiPapersOcclusionsChanged = () => window.dispatchEvent(new Event(OCCLUSIONS_CHANGED_EVENT));
+}
+
 // The web browser docked beside the editor is a native Qt view
 // (gui/web_browser.py); these only show or hide it and pass the colors.
 export async function setWebBrowser(open, theme = null) {
@@ -328,6 +346,8 @@ function createMockBridge() {
     ] },
   ] };
   const sourceLinks = {};
+  // Dev stand-in for Anki: "creating" occlusion cards on a picture adds 3.
+  const occlusions = {};
   return {
     ...createAiSourcesMock(papers),
     list_papers: () => papers,
@@ -416,6 +436,16 @@ function createMockBridge() {
     export_papers_to_disk: () => ({ root: '', written: [] }),
     share_paper: () => ({ canceled: true }),
     share_folder: () => ({ canceled: true }),
+    occlusion_counts: ({ names }) => ({
+      counts: Object.fromEntries((names || []).filter((n) => occlusions[n]).map((n) => [n, occlusions[n]])),
+    }),
+    occlusion_create: ({ name }) => {
+      const e = occlusions[name] || { cards: 0, note_ids: [] };
+      occlusions[name] = { cards: e.cards + 3, note_ids: [...e.note_ids, 2000 + e.note_ids.length] };
+      setTimeout(() => window.ankiPapersOcclusionsChanged?.(), 300);
+      return { ok: true };
+    },
+    occlusion_edit: ({ name }) => { console.log('Mock: edit occlusions for', name); return { ok: true }; },
     set_web_browser: ({ open }) => ({ open: !!open }),
     get_web_browser: () => ({ open: false }),
     get_settings: () => ({
@@ -477,6 +507,7 @@ if (typeof window !== 'undefined') {
     searchPapers, getHomeStats, getNoteStats, unsuspendNote,
     importMarkdown, exportMarkdown, exportPdf, exportPapersToDisk,
     getSettings, saveSettings, openUrl, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
+    getOcclusionCounts, createOcclusion, editOcclusion,
     pickPdfFile, getPdfViewerUrl, getPdfUrl, extractPdfText, extractWebText,
     saveSourceLink, loadSourceLink, openSourceAtLocation,
   };
