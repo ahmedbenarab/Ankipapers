@@ -60,7 +60,7 @@ function SearchMatchBadges({ result }) {
   )
 }
 
-export default function Sidebar({ papers, folders, activePaperId, onSelectPaper, onGoToLine, onCreatePaper, onDeletePaper, onCreateFolder, onMovePaper, onMoveFolder, onSelectFolder, selectedFolder, onGoHome, onOpenSettings, onDeleteFolder, onRenameFolder, onGenerateFolder, onShareFolder, collapsed = false, width = 260, onToggleCollapse, outline = null, outlineTitle = '', outlineCurrentLine = 0, onJumpToHeading, currentPaper = null, folderSources = {}, onFolderSource, onCreateWaitingChapter, showWaiting = false }) {
+export default function Sidebar({ papers, folders, activePaperId, onSelectPaper, onGoToLine, onCreatePaper, onDeletePaper, onCreateFolder, onMovePaper, onMoveFolder, onSelectFolder, selectedFolder, onGoHome, onOpenSettings, onOpenGuide, onDeleteFolder, onRenameFolder, onGenerateFolder, onShareFolder, collapsed = false, width = 260, onToggleCollapse, outline = null, outlineTitle = '', outlineCurrentLine = 0, onJumpToHeading, currentPaper = null, folderSources = {}, onFolderSource, onCreateWaitingChapter, showWaiting = false }) {
   // Papers (the folder tree) or Outline (the open paper's headings).
   const [tab, setTab] = useState('papers')
   const [peeking, setPeeking] = useState(false)
@@ -481,6 +481,9 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
         <FolderPlus size={18} />
       </button>
       <div className="sidebar-rail-spacer" />
+      <button type="button" className="sidebar-rail-btn" onClick={onOpenGuide} title="Guide">
+        <CircleHelp size={18} />
+      </button>
       <button type="button" className="sidebar-rail-btn" onClick={onOpenSettings}
               title="Settings (Ctrl+,)">
         <Settings size={18} />
@@ -505,6 +508,9 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
             </button>
             <button type="button" className="sidebar-home-btn" onClick={onOpenSettings} title="Settings (Ctrl+,)">
               <Settings size={22} strokeWidth={1.75} />
+            </button>
+            <button type="button" className="sidebar-home-btn" onClick={onOpenGuide} title="Guide">
+              <CircleHelp size={22} strokeWidth={1.75} />
             </button>
             <button type="button" className="sidebar-home-btn" onClick={onToggleCollapse}
                     title="Hide sidebar (Ctrl+\)">

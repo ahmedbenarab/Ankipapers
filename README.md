@@ -41,6 +41,8 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 
 ## What's new
 
+**The guide has a window of its own.** Press the **?** button at the top of the sidebar (beside Home and Settings) to open it: topics down the left, the chosen one on the right, like Settings. It reopens on the topic you read last. The home page keeps a short **Start here** under the greeting with the four ways to mark a line, and an **Open the guide** link.
+
 **Generate Cards is now Add Cards to Anki.** The button that turns your card lines into Anki cards says what it does. It works exactly as before: it saves the paper, then creates, updates and removes that paper's cards. `Ctrl+G` still runs it, and a folder's right-click menu now reads **Add all cards in folder to Anki**.
 
 **Image occlusion from your pictures.**

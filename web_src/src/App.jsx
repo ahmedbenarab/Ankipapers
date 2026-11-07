@@ -25,6 +25,7 @@ import GraphView from './components/GraphView'
 import ErrorBoundary from './components/ErrorBoundary'
 import Toast from './components/Toast'
 import Settings from './components/Settings'
+import GuideWindow from './components/GuideWindow'
 import GenerateConflictModal from './components/GenerateConflictModal'
 import FolderGenerateDialog from './components/FolderGenerateDialog'
 import TableDialog from './components/TableDialog'
@@ -143,6 +144,9 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [cardCounts, setCardCounts] = useState({ basic: 0, reversible: 0, cloze: 0 })
   const [showSettings, setShowSettings] = useState(false)
+  // The guide's window, and the topic it reopens on.
+  const [showGuide, setShowGuide] = useState(false)
+  const [guideTopic, setGuideTopic] = useState('start')
   const [settings, setSettings] = useState({})
   const [selectedFolder, setSelectedFolder] = useState(null)
   const [mediaDir, setMediaDir] = useState('')
@@ -1726,6 +1730,7 @@ export default function App() {
         onSelectFolder={setSelectedFolder} selectedFolder={selectedFolder}
         onGoHome={handleGoHome}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenGuide={() => setShowGuide(true)}
         onDeleteFolder={handleDeleteFolder}
         onRenameFolder={handleRenameFolder}
         onGenerateFolder={handleGenerateFolder}
@@ -1867,7 +1872,7 @@ export default function App() {
             onSelectPaper={handleSelectPaper}
             onCreatePaper={handleCreatePaper}
             onImportMarkdown={handleImportMarkdown}
-            onOpenSettings={() => setShowSettings(true)}
+            onOpenGuide={() => setShowGuide(true)}
           />
         )}
       </div>
@@ -1923,6 +1928,10 @@ export default function App() {
             />
           </div>
         </>
+      )}
+      {showGuide && (
+        <GuideWindow topic={guideTopic} onTopicChange={setGuideTopic} onClose={() => setShowGuide(false)}
+          onOpenSettings={() => { setShowGuide(false); setSettingsSection('files'); setShowSettings(true) }} />
       )}
       {showSettings && <Settings settings={settings} onSave={handleSaveSettings} onClose={() => { setShowSettings(false); setSettingsSection(null) }}
         initialSection={settingsSection}

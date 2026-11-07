@@ -1620,6 +1620,26 @@ textarea.block-input.block-input-textarea {
 .home-chip.active svg { color: var(--on-accent); }
 .home-guide { margin-top: 12px; }
 
+/* Start here: the four ways to mark a line, under the greeting. The full
+   guide is in its own window (the Guide button in the sidebar). */
+.home-start.welcome-ref { margin-top: 12px; gap: 8px; padding: 14px 18px; }
+.home-start-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-bottom: 7px; border-bottom: 1px solid var(--border);
+}
+.home-start-head .welcome-ref-group-title { padding-bottom: 0; border-bottom: none; }
+.home-start-guide {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+  padding: 3px 6px; border: none; border-radius: var(--radius-sm); background: none;
+  color: var(--accent); font: 600 12px var(--font-sans); cursor: pointer;
+}
+.home-start-guide:hover { background: var(--bg-hover); }
+
+/* The guide's window: Settings' layout, with the guide's own rows. */
+.guide-modal { width: min(880px, calc(100vw - 32px)); height: min(680px, calc(100vh - 48px)); }
+.guide-modal .settings-tabs { flex-basis: 214px; }
+.guide-body { gap: 20px; padding-bottom: 8px; }
+
 @media (max-width: 700px) {
   .home-hero { flex-wrap: wrap; }
   .home-hero-actions { width: 100%; }
@@ -1747,6 +1767,24 @@ textarea.block-input.block-input-textarea {
   height: min(620px, calc(100vh - 48px));
   display: flex; flex-direction: column;
 }
+/* Vertical tabs on the left, the chosen tab's settings on the right. */
+.settings-layout { flex: 1; min-height: 0; display: flex; gap: 20px; margin-bottom: 12px; }
+.settings-tabs {
+  flex: 0 0 172px; display: flex; flex-direction: column; gap: 2px;
+  padding-right: 12px; border-right: 1px solid var(--border); overflow-y: auto;
+}
+.settings-tab {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; border: none; border-radius: var(--radius-md);
+  background: transparent; color: var(--text-secondary);
+  font-family: var(--font-sans); font-size: 13px; text-align: left; cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.settings-tab svg { flex-shrink: 0; opacity: 0.8; }
+.settings-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-tab.active { background: var(--bg-hover); color: var(--accent); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+.settings-tab.active svg { opacity: 1; }
+.settings-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .settings-body {
   flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
   margin: 0 -8px; padding: 0 8px;
@@ -1783,24 +1821,6 @@ textarea.block-input.block-input-textarea {
 }
 
 .generate-conflict-modal { max-width: 480px; }
-/* Vertical tabs on the left, the chosen tab's settings on the right. */
-.settings-layout { flex: 1; min-height: 0; display: flex; gap: 20px; margin-bottom: 12px; }
-.settings-tabs {
-  flex: 0 0 172px; display: flex; flex-direction: column; gap: 2px;
-  padding-right: 12px; border-right: 1px solid var(--border); overflow-y: auto;
-}
-.settings-tab {
-  display: flex; align-items: center; gap: 9px; width: 100%;
-  padding: 8px 10px; border: none; border-radius: var(--radius-md);
-  background: transparent; color: var(--text-secondary);
-  font-family: var(--font-sans); font-size: 13px; text-align: left; cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-}
-.settings-tab svg { flex-shrink: 0; opacity: 0.8; }
-.settings-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
-.settings-tab.active { background: var(--bg-hover); color: var(--accent); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
-.settings-tab.active svg { opacity: 1; }
-.settings-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .generate-conflict-intro { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 12px 0; }
 .generate-conflict-list {
   list-style: none; margin: 0 0 16px 0; padding: 0;
