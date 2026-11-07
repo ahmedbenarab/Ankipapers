@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
-import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, EyeOff } from 'lucide-react'
+import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, SquareDashedMousePointer } from 'lucide-react'
 import { openInBrowser, pasteImage, getClipboardText, getOcclusionCounts, createOcclusion, editOcclusion, OCCLUSIONS_CHANGED_EVENT } from '../bridge'
 import WeakSpotHover from './WeakSpotHover'
 import DraftGroup from './DraftGroup'
@@ -327,7 +327,7 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCreateOcclusion(m[2].trim()) }}
               >
-                <EyeOff size={13} />
+                <SquareDashedMousePointer size={14} />
                 <span>Occlude</span>
               </button>
             )}
