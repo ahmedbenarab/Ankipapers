@@ -566,13 +566,13 @@ The add-on loads the **built** files in `web/`, so source edits have no effect u
 
 ### Building the add-on package
 
-Creates `Ankipapers.ankiaddon` for sharing or "Install from file".
+Creates `Ankipapers.ankiaddon` for sharing or "Install from file", and `Ankipapers-ankiweb.zip` (the same contents) to upload to AnkiWeb. Rebuild the web UI first if you changed anything in `web_src/`.
 
 ```powershell
 .\_build.ps1          # Windows PowerShell
 ```
 
-Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `core/`, `gui/`, and `web/` — not `web_src/`, `user_files/`, or `node_modules/`.
+The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `LICENSE`, `AnkiPapers logo.png`, `core/`, `gui/`, and `web/` — not `web_src/`, `user_files/`, `tests/`, `meta.json`, or `__pycache__/`. Paths inside the zip use forward slashes so it installs on macOS and Linux too.
 
 ---
 
