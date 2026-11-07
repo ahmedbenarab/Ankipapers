@@ -9,8 +9,11 @@ Uses a React-based web UI for rich editing, live preview, and formatting tools.
 Author: Dr. Ahmed Benarab
 """
 
+import os
+import urllib.parse
+
 from aqt import mw, gui_hooks
-from aqt.qt import QAction, QKeySequence, QTimer
+from aqt.qt import QAction, QIcon, QKeySequence, QTimer
 
 # Serve everything under web/ at {mw.serverURL()}_addons/<package>/web/<path>
 # (gui/webview.py loads web/index.html from there; see the migration brief's
@@ -41,8 +44,11 @@ def _jump_when_ready(window, source, attempt):
 
 
 def setup_menu():
-    """Add Anki Papers to the Tools menu."""
-    action = QAction("📝 Anki Papers", mw)
+    """Add Anki Papers to the Tools menu, with the add-on's logo as its icon."""
+    action = QAction("Anki Papers", mw)
+    logo = os.path.join(os.path.dirname(__file__), "AnkiPapers logo.png")
+    if os.path.exists(logo):
+        action.setIcon(QIcon(logo))
     action.setShortcut(QKeySequence("Ctrl+Shift+P"))
     action.triggered.connect(open_anki_papers)
     mw.form.menuTools.addAction(action)
@@ -114,14 +120,50 @@ def on_pycmd(handled, message, context):
     return handled
 
 
+# The top bar's "Papers" link: a page with lines of notes beside the word.
+# Anki writes a link's label into the page twice, once as its text and once
+# inside aria-label="…", so the label has to stay plain text: an icon written
+# into it broke out of that attribute and showed its markup on the toolbar.
+# The icon is drawn by CSS on the toolbar page instead, as a mask filled with
+# the text color, so it follows Anki's light and dark themes like the text.
+_PAPERS_ICON_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' "
+    "stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
+    "<path d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z'/>"
+    "<path d='M15 2v5h5'/><path d='M8 12h8M8 16h8M8 8h3'/></svg>"
+)
+_PAPERS_ICON_URL = "data:image/svg+xml," + urllib.parse.quote(_PAPERS_ICON_SVG)
+PAPERS_TOOLBAR_CSS = f"""
+<style>
+#ankipapers::before {{
+  content: ""; display: inline-block; width: 1.05em; height: 1.05em;
+  margin-right: 0.35em; vertical-align: -0.17em; background-color: currentColor;
+  -webkit-mask: url("{_PAPERS_ICON_URL}") center / contain no-repeat;
+  mask: url("{_PAPERS_ICON_URL}") center / contain no-repeat;
+}}
+</style>
+"""
+
+
+def add_papers_toolbar_icon(web_content, context):
+    """webview_will_set_content: give the top bar's Papers link its icon."""
+    try:
+        from aqt.toolbar import Toolbar
+        if isinstance(context, Toolbar):
+            web_content.head += PAPERS_TOOLBAR_CSS
+    except Exception:
+        pass
+
+
 # Register hooks
 gui_hooks.main_window_did_init.append(setup_menu)
 gui_hooks.webview_did_receive_js_message.append(on_pycmd)
+gui_hooks.webview_will_set_content.append(add_papers_toolbar_icon)
 gui_hooks.top_toolbar_did_init_links.append(
     lambda links, toolbar: links.append(
         toolbar.create_link(
             "ankipapers",
-            "📝 Papers",
+            "Papers",
             open_anki_papers,
             tip="Open Anki Papers (Ctrl+Shift+P)",
             id="ankipapers",
