@@ -8,6 +8,7 @@ and the page polls "ai_poll" until the job is done, so Anki never freezes
 while a model answers or a course outline downloads.
 """
 
+import json
 import os
 import traceback
 from typing import Any, Dict, List
@@ -37,17 +38,48 @@ def _config() -> Dict[str, Any]:
     return mw.addonManager.getConfig(_ADDON) or {}
 
 
-def _write_config_key(key: str, value: Any) -> None:
+LEGACY_KEYS_CONFIG = "ai_keys_local"
+
+
+def _keys_file() -> str:
+    return os.path.join(get_ankipapers_dir(), "ai_keys.json")
+
+
+def _read_local_keys() -> Dict[str, str]:
+    """API keys off macOS: a file of their own in the Anki profile folder.
+
+    They used to live in the add-on's config under "ai_keys_local". But
+    Settings → Save writes the whole config back as the page last loaded it,
+    and a key saved with "Save key" after the page loaded was not in that
+    copy, so pressing Save Settings erased it. Keys saved that way and not
+    yet erased are still read from the config until the next save moves them.
+    """
+    try:
+        with open(_keys_file(), "r", encoding="utf-8") as f:
+            keys = json.load(f)
+        return keys if isinstance(keys, dict) else {}
+    except FileNotFoundError:
+        legacy = _config().get(LEGACY_KEYS_CONFIG)
+        return dict(legacy) if isinstance(legacy, dict) else {}
+    except Exception:
+        traceback.print_exc()
+        return {}
+
+
+def _write_local_keys(keys: Dict[str, str]) -> None:
+    path = _keys_file()
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(keys, f, indent=1)
+    os.replace(tmp, path)
     cfg = _config()
-    cfg[key] = value
-    mw.addonManager.writeConfig(_ADDON, cfg)
+    if LEGACY_KEYS_CONFIG in cfg:
+        cfg.pop(LEGACY_KEYS_CONFIG)
+        mw.addonManager.writeConfig(_ADDON, cfg)
 
 
 JOBS = AI.JobManager()
-KEYS = AI.KeyStore(
-    fallback_get=lambda: _config().get("ai_keys_local") or {},
-    fallback_set=lambda keys: _write_config_key("ai_keys_local", keys),
-)
+KEYS = AI.KeyStore(fallback_get=_read_local_keys, fallback_set=_write_local_keys)
 USAGE = AI.UsageLog(lambda: os.path.join(get_ankipapers_dir(), "ai_usage.json"))
 REGISTRY = SRC.Registry(_collection_get, _collection_set, get_ankipapers_dir)
 CATALOG = SRC.LearnCatalog(lambda: REGISTRY.dir("cache"))

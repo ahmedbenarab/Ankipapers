@@ -110,7 +110,7 @@ export default function SettingsAI({ local, update, sectionRef }) {
           <label className="settings-label">{meta.keyLabel}</label>
           <p className="settings-field-hint">Get one at {meta.get}. {status?.key_store === 'keychain'
             ? 'It’s stored in your macOS Keychain, not in the add-on’s settings files.'
-            : 'It’s stored in this add-on’s settings on this computer.'}</p>
+            : 'It’s stored in your Anki profile folder on this computer, apart from the add-on’s settings.'}</p>
           <div className="ai-row">
             <input className="modal-input mono grow" style={{ margin: 0 }} type="password" autoComplete="off"
               placeholder={saved?.saved ? `Saved: ${saved.hint}  (paste a new key to replace it)` : meta.placeholder}
@@ -119,6 +119,9 @@ export default function SettingsAI({ local, update, sectionRef }) {
               {saving ? <Loader2 size={13} className="spin" /> : <KeyRound size={13} />} Save key
             </button>
           </div>
+          {keyInput.trim() && !keyMsg && (
+            <p className="settings-field-hint ai-unsaved">Not saved yet: press Save key. Save Settings doesn’t save keys.</p>
+          )}
           <div className="ai-row" style={{ marginTop: -4 }}>
             <button type="button" className="modal-btn" disabled={testing} onClick={runTest}>
               {testing ? <Loader2 size={13} className="spin" /> : <Plug size={13} />} Test connection
