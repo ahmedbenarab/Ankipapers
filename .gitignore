@@ -14,7 +14,8 @@ web_src/dist/
 web_src/dist-ssr/
 web_src/*.local
 
-# Packaged add-on / zip scratch
+# Packaged add-on / zip scratch (_build.ps1 writes to builds/)
+builds/
 *.ankiaddon
 *.zip
 *_temp.zip

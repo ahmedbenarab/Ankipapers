@@ -566,7 +566,7 @@ The add-on loads the **built** files in `web/`, so source edits have no effect u
 
 ### Building the add-on package
 
-Creates `Ankipapers.ankiaddon` for sharing or "Install from file", and `Ankipapers-ankiweb.zip` (the same contents) to upload to AnkiWeb. Rebuild the web UI first if you changed anything in `web_src/`.
+Creates `builds/Ankipapers-<version>.ankiaddon` for sharing or "Install from file", and `builds/Ankipapers-<version>-ankiweb.zip` (the same contents) to upload to AnkiWeb. `<version>` is `human_version` from `manifest.json`, so each release keeps its own files in `builds/`. Rebuild the web UI first if you changed anything in `web_src/`.
 
 ```powershell
 .\_build.ps1          # Windows PowerShell
