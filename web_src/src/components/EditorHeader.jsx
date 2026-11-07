@@ -1,6 +1,28 @@
-import React, { useEffect, useRef } from 'react'
-import { Pencil, Eye, FileDown, FileInput, FileText, Link2, ChevronLeft, ChevronRight, Sparkles, MessageCircle, Paperclip, BookOpen, Globe, Share } from 'lucide-react'
+import React, { useEffect, useId, useRef } from 'react'
+import { Pencil, Eye, FileInput, FileText, Link2, ChevronLeft, ChevronRight, Sparkles, MessageCircle, Paperclip, BookOpen, Globe, Share } from 'lucide-react'
 import FormattingButtons from './FormattingToolbar'
+
+// Lucide has no PDF icon, so this one is drawn to match its icons: a page in
+// a 2px outline with a solid "PDF" label across its lower half. The letters
+// are cut out of the label rather than painted in a color, so whatever is
+// behind the button shows through them in both themes.
+function PdfIcon({ size = 16 }) {
+  const mask = `pdf-label-${useId().replace(/:/g, '')}`
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 9.5V4a2 2 0 0 1 2-2h8l5 5v2.5" />
+      <path d="M15 2v5h5" />
+      <path d="M5 21v.2A.8.8 0 0 0 5.8 22h13.4a.8.8 0 0 0 .8-.8V21" />
+      <mask id={mask}>
+        <rect x="0" y="0" width="24" height="24" fill="#fff" />
+        <text x="12" y="18.3" textAnchor="middle" fontSize="8.6" fontWeight="800"
+          fontFamily="Arial, Helvetica, sans-serif" fill="#000" stroke="none" letterSpacing="0.2">PDF</text>
+      </mask>
+      <rect x="0.5" y="10.5" width="23" height="10" rx="2" fill="currentColor" stroke="none" mask={`url(#${mask})`} />
+    </svg>
+  )
+}
 
 // The one toolbar under the tabs: back/forward, deck picker and formatting
 // buttons on the left (the deck picker stretches to fill the row), view
@@ -84,7 +106,7 @@ export default function EditorHeader({ canBack, canForward, onBack, onForward, d
           <FileText size={16} />
         </button>
         <button className="header-icon-btn" title="Export PDF" onClick={onExportPdf}>
-          <FileDown size={16} />
+          <PdfIcon size={16} />
         </button>
         {onShare && (
           <button className="header-icon-btn" title="Share this paper with its pictures (.zip)" onClick={onShare}>
