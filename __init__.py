@@ -78,13 +78,37 @@ def setup_toolbar():
         pass
 
 
+def _current_source(source, context):
+    """The jump target with the card's line as it is in the paper now.
+
+    The note's Source field holds the line number from the last Generate, and
+    lines move whenever something above them changes. The card being shown
+    knows its note, and the note's anchor in the paper knows its line.
+    Anything that can't be worked out keeps the stored line.
+    """
+    try:
+        paper_id, _ = source.split(":", 1)
+        card = getattr(context, "card", None)
+        if callable(card):   # the Previewer has card(), the Reviewer .card
+            card = card()
+        note_id = getattr(card, "nid", None)
+        if not paper_id or not note_id:
+            return source
+        from .core.card_manager import current_line_for_note
+        from .core.storage import load_paper
+        line = current_line_for_note(load_paper(paper_id), note_id)
+        return source if line is None else f"{paper_id}:{line}"
+    except Exception:
+        return source
+
+
 def on_pycmd(handled, message, context):
     """Handle pycmd clicks."""
     if message == "ankipapers_open":
         open_anki_papers()
         return True, None
     if message.startswith("ankipapers_jump:"):
-        source = message.split(":", 1)[1]
+        source = _current_source(message.split(":", 1)[1], context)
         open_anki_papers(source)
         return True, None
     return handled

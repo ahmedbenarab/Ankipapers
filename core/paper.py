@@ -98,6 +98,14 @@ class Paper:
         self.modified_at = time.time()
         self.tags: List[str] = []
         self.show_chapter_bar = False
+        # When save_paper() last wrote this paper. A paper is kept in two
+        # places (the collection and the files on disk), and this is how a
+        # read tells which copy is current. modified_at cannot: Generate
+        # rewrites card_refs without changing it.
+        self.saved_at = 0.0
+        # The AnkiPapers::<title> tag Generate last put on this paper's notes,
+        # so the next Generate can swap it for the new one after a rename.
+        self.title_tag: Optional[str] = None
 
     @property
     def full_path(self) -> str:
@@ -147,6 +155,8 @@ class Paper:
             "modified_at": self.modified_at,
             "tags": self.tags,
             "show_chapter_bar": bool(getattr(self, "show_chapter_bar", False)),
+            "saved_at": float(getattr(self, "saved_at", 0.0) or 0.0),
+            "title_tag": getattr(self, "title_tag", None),
         }
 
     @classmethod
@@ -166,4 +176,6 @@ class Paper:
         paper.modified_at = data.get("modified_at", time.time())
         paper.tags = data.get("tags", [])
         paper.show_chapter_bar = bool(data.get("show_chapter_bar", False))
+        paper.saved_at = float(data.get("saved_at") or 0.0)
+        paper.title_tag = data.get("title_tag") or None
         return paper
