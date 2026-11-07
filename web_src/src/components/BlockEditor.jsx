@@ -162,6 +162,20 @@ function normalizePastedText(raw) {
     .trim()
 }
 
+/**
+ * What a block's textarea leaves off the start of a line: the outline's
+ * indent, plus the run of ➵ on a code line. Cursor offsets read from the
+ * textarea count from after it, so anything that splices text in at the
+ * cursor has to take this off first and put it back after.
+ */
+function textareaHead(lines, index, display) {
+  const blk = codeLineMap(lines).get(index)
+  if (blk && index !== blk.open && index !== blk.close) {
+    return splitCodeLine(display, outlineIndent(stripApBlockId(lines[blk.open]))).prefix
+  }
+  return (display.match(/^[ \t]*/) || [''])[0]
+}
+
 function scheduleRestoreSelection(inputRef, start, end) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -711,6 +725,7 @@ const Block = React.memo(function Block({
   onBlockContextMenu,
   onOpenLink,
   activeBlockInputRef,
+  focusCaretRef,
   hasChildren,
   isCollapsed,
   onToggleCollapse,
@@ -738,11 +753,15 @@ const Block = React.memo(function Block({
   useEffect(() => {
     if (focused && inputRef.current) {
       inputRef.current.focus()
-      // Put cursor at end
+      // Put the cursor where the editor asked for it (Enter, Backspace), else
+      // at the end.
       const len = inputRef.current.value.length
-      inputRef.current.setSelectionRange(len, len)
+      const want = focusCaretRef?.current
+      if (focusCaretRef) focusCaretRef.current = null
+      const at = want == null ? len : Math.max(0, Math.min(want, len))
+      inputRef.current.setSelectionRange(at, at)
     }
-  }, [focused])
+  }, [focused, focusCaretRef])
 
   useLayoutEffect(() => {
     if (!focused) return
@@ -1023,6 +1042,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   const containerRef = useRef(null)
   const blockMenuRef = useRef(null)
   const activeBlockInputRef = useRef(null)
+  // Caret offset for the next line to take focus; Block reads and clears it.
+  const focusCaretRef = useRef(null)
 
   useEffect(() => {
     if (!lasso) return
@@ -1519,8 +1540,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         lines[index - 1] = prevDisplay + actualText + prevSuf
         lines.splice(index, 1)
         onChange(lines.join('\n'))
+        focusCaretRef.current = joinAt
         setFocusedIndex(index - 1)
-        scheduleRestoreSelection(activeBlockInputRef, joinAt, joinAt)
         return
       }
     }
@@ -1576,7 +1597,10 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
           out[0] = currentApSuf ? out[0].replace(/\s+$/, '') + currentApSuf : out[0]
           lines.splice(index, 1, ...out, leadingSpaces + after)
           onChange(lines.join('\n'))
-          setTimeout(() => setFocusedIndex(index + last + 1), 10)
+          setTimeout(() => {
+            focusCaretRef.current = 0
+            setFocusedIndex(index + last + 1)
+          }, 10)
         }
         return
       }
@@ -1662,7 +1686,12 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       lines[index] = currentApSuf ? newLineBefore.replace(/\s+$/, '') + currentApSuf : newLineBefore
       lines.splice(index + 1, 0, newLineAfter)
       onChange(lines.join('\n'))
-      setTimeout(() => setFocusedIndex(index + 1), 10)
+      // A newly focused line puts the caret at its end; the text that moved
+      // down should have it at its start, where it was.
+      setTimeout(() => {
+        focusCaretRef.current = 0
+        setFocusedIndex(index + 1)
+      }, 10)
       return
     }
 
@@ -1678,16 +1707,28 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         const prevLine = lines[index - 1]
         const suf = extractApBlockSuffix(prevLine)
         const prevDisplay = stripApBlockId(prevLine)
-        
+        // Where the two lines meet, counted in the textarea's text, which
+        // leaves off the line's indent.
+        const joinAt = prevDisplay.length - (prevDisplay.match(/^[ \t]*/) || [''])[0].length
+
         const merged = prevDisplay + actualText
         lines[index - 1] = suf ? merged.replace(/\s+$/, '') + suf : merged
-        
+
         lines.splice(index, 1)
-        
+
         onChange(lines.join('\n'))
+        focusCaretRef.current = joinAt
         setFocusedIndex(index - 1)
         return
       }
+    }
+
+    // A table is edited as one block from its first row, so the arrows step
+    // over its other rows: landing on one would open that row on its own.
+    const tableBodyRow = (j) => {
+      if (blocks[j]?.code) return null
+      const b = findTableBounds(lines, j)
+      return b && b.start !== j ? b : null
     }
 
     if (e.key === 'ArrowUp' && index > 0) {
@@ -1696,24 +1737,32 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       if (atStart) {
         e.preventDefault()
         let nextIndex = index - 1
-        while (nextIndex > 0 && blocks[nextIndex]?.isHidden) {
-           nextIndex--
+        for (;;) {
+          const body = tableBodyRow(nextIndex)
+          if (body) nextIndex = body.start
+          else if (nextIndex > 0 && blocks[nextIndex]?.isHidden) nextIndex--
+          else break
         }
         setFocusedIndex(nextIndex)
       }
     }
 
-    if (e.key === 'ArrowDown' && index < lines.length - 1) {
+    // From a table, the line after it is past its last row.
+    const lastOfBlock = inTable ? tableBounds.end : index
+    if (e.key === 'ArrowDown' && lastOfBlock < lines.length - 1) {
       const ta = e.target
       const len = ta.value.length
       const atEnd = ta.selectionStart === len && ta.selectionEnd === len
       if (atEnd) {
         e.preventDefault()
-        let nextIndex = index + 1
-        while (nextIndex < lines.length - 1 && blocks[nextIndex]?.isHidden) {
-           nextIndex++
+        let nextIndex = lastOfBlock + 1
+        while (nextIndex < lines.length) {
+          const body = tableBodyRow(nextIndex)
+          if (body) nextIndex = body.end + 1
+          else if (blocks[nextIndex]?.isHidden) nextIndex++
+          else break
         }
-        setFocusedIndex(nextIndex)
+        if (nextIndex < lines.length) setFocusedIndex(nextIndex)
       }
     }
 
@@ -2249,7 +2298,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const full = lines[i] ?? ''
     const apSuf = extractApBlockSuffix(full)
     const display = stripApBlockId(full)
-    const leadingSpaces = (display.match(/^[ \t]*/) || [''])[0]
+    const leadingSpaces = textareaHead(lines, i, display)
     // The block's textarea holds the line WITHOUT its indent (see the
     // `value={actualText}` textarea below), so selStart/selEnd index this
     // string, not the stored line.
@@ -2297,6 +2346,28 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   useEffect(() => {
     const onKey = (e) => {
       if (!((e.key === 'V' || e.key === 'v') && e.shiftKey && (e.ctrlKey || e.metaKey))) return
+
+      // Captured now, synchronously. The clipboard read that follows is async.
+      // Only claim the chord for the editor: a line being edited, or blocks
+      // selected while no other text box has focus. Anywhere else (the Ask
+      // panel, search, settings) the keystroke is left alone.
+      const idx = focusedIndexRef.current
+      const input = activeBlockInputRef.current
+      const active = document.activeElement
+      const inEditorLine = !!input && active === input
+      const target = (idx !== null && inEditorLine)
+        ? {
+            index: idx,
+            selStart: input.selectionStart ?? 0,
+            selEnd: input.selectionEnd ?? input.selectionStart ?? 0,
+          }
+        : null
+      const typingElsewhere = !inEditorLine && !!active
+        && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
+      const sel = selectedIndicesRef.current
+      const blocks = (!target && !typingElsewhere && sel && sel.size) ? [...sel] : null
+      if (!target && !blocks) return
+
       e.preventDefault()
       e.stopPropagation()
 
@@ -2305,20 +2376,6 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       // braces: a paste event that still slips through within the window
       // below is ignored rather than inserted a second time.
       plainPasteGuardRef.current = Date.now()
-
-      // Captured now, synchronously. The clipboard read that follows is async.
-      const idx = focusedIndexRef.current
-      const input = activeBlockInputRef.current
-      const target = (idx !== null && input)
-        ? {
-            index: idx,
-            selStart: input.selectionStart ?? 0,
-            selEnd: input.selectionEnd ?? input.selectionStart ?? 0,
-          }
-        : null
-      const sel = selectedIndicesRef.current
-      const blocks = (!target && sel && sel.size) ? [...sel] : null
-      if (!target && !blocks) return
 
       pastePlainText(target, blocks)
     }
@@ -2511,8 +2568,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                   return stripApBlockId(full)
                 })()
 
-            const spacesMatch = fullText.match(/^[ \t]*/)
-            const leadingSpaces = tableHead ? '' : (spacesMatch ? spacesMatch[0] : '')
+            const leadingSpaces = tableHead ? '' : textareaHead(lines, focusedIndex, fullText)
             let actualText = tableHead ? fullText : fullText.slice(leadingSpaces.length)
 
             const input = activeBlockInputRef.current
@@ -2656,9 +2712,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
           apSuffix = extractApBlockSuffix(full)
           return stripApBlockId(full)
         })()
-        
-    const spacesMatch = fullText.match(/^[ \t]*/)
-    const leadingSpaces = tableHead ? '' : (spacesMatch ? spacesMatch[0] : '')
+
+    const leadingSpaces = tableHead ? '' : textareaHead(lines, focusedIndex, fullText)
     let line = tableHead ? fullText : fullText.slice(leadingSpaces.length)
 
     const input = activeBlockInputRef.current
@@ -2898,8 +2953,10 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     focusBlock: (index) => {
       setSelectedIndices(new Set())
       setFocusedIndex(index)
+      // Found by line number, not by position among the rows: a table's rows
+      // after its first are not drawn, so positions stop matching lines.
       setTimeout(() => {
-        const el = containerRef.current?.children[index]
+        const el = containerRef.current?.querySelector(`[data-line="${index}"]`)
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }, 50)
     },
@@ -3121,6 +3178,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 onBlockContextMenu={handleBlockContextMenu}
                 onOpenLink={handleOpenLink}
                 activeBlockInputRef={activeBlockInputRef}
+                focusCaretRef={focusCaretRef}
                 hasChildren={b.hasChildren}
                 isCollapsed={collapsedIds.has(b.id)}
                 onToggleCollapse={toggleCollapse}
