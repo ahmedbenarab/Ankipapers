@@ -9,8 +9,9 @@ import { aiStatus, aiSaveKey, aiDeleteKey, aiTest } from '../aiBridge'
  */
 
 const PROVIDERS = [
-  { id: 'anthropic', name: 'Claude', sub: 'Anthropic API key', keyLabel: 'Anthropic API key', get: 'console.anthropic.com → API keys', placeholder: 'sk-ant-…' },
+  { id: 'anthropic', name: 'Claude', sub: 'Anthropic API key', keyLabel: 'Anthropic API key', get: 'console.anthropic.com → API keys', placeholder: 'sk-ant-…', defaultModel: 'claude-opus-5-5' },
   { id: 'gemini', name: 'Gemini', sub: 'Google AI Studio key', keyLabel: 'Google AI Studio key', get: 'aistudio.google.com → Get API key', placeholder: 'AIza…' },
+  { id: 'deepseek', name: 'DeepSeek', sub: 'DeepSeek API key', keyLabel: 'DeepSeek API key', get: 'platform.deepseek.com → API keys', placeholder: 'sk-…', defaultModel: 'deepseek-chat' },
   { id: 'openai', name: 'OpenAI-compatible', sub: 'OpenAI, OpenRouter, Ollama, LM Studio', keyLabel: 'API key (optional for a local model)', get: 'your provider’s dashboard; a local model needs none', placeholder: 'sk-… (leave empty for Ollama / LM Studio)' },
 ]
 
@@ -27,7 +28,7 @@ export default function SettingsAI({ local, update, sectionRef }) {
   const provider = local.ai_provider || 'anthropic'
   const meta = PROVIDERS.find((p) => p.id === provider)
   const modelKey = `ai_model_${provider}`
-  const model = local[modelKey] ?? (provider === 'anthropic' ? 'claude-opus-5-5' : '')
+  const model = local[modelKey] ?? (meta.defaultModel || '')
   const types = { basic: true, reversible: true, cloze: true, ...(local.ai_card_types || {}) }
   const enabled = local.ai_enabled !== false
   const saved = status?.keys?.[provider]
@@ -93,6 +94,10 @@ export default function SettingsAI({ local, update, sectionRef }) {
             ))}
           </div>
 
+          {provider === 'deepseek' && (
+            <p className="settings-field-hint"><span className="mono">deepseek-chat</span> is fast and cheap for drafting cards; <span className="mono">deepseek-reasoner</span> thinks before it answers, which is slower and costs more.</p>
+          )}
+
           {provider === 'openai' && (
             <>
               <label className="settings-label">Address</label>
@@ -135,7 +140,7 @@ export default function SettingsAI({ local, update, sectionRef }) {
             </select>
           ) : (
             <>
-              <input className="modal-input mono" value={model} placeholder={provider === 'anthropic' ? 'claude-opus-5-5' : 'Press Test connection to list models'}
+              <input className="modal-input mono" value={model} placeholder={meta.defaultModel || 'Press Test connection to list models'}
                 onChange={(e) => update(modelKey, e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
               <p className="settings-field-hint" style={{ marginTop: -6 }}>Test connection fills in a list of the models your key can use.</p>
             </>

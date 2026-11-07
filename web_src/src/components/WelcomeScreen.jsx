@@ -610,7 +610,7 @@ export default function WelcomeScreen({
                 blurb="An AI model can suggest cards from your notes and answer questions about them. Nothing it writes goes into your paper or into Anki until you say so. Set it up once in Settings → AI."
               >
                 <Ref code="Settings → AI" tone="key">
-                  Choose Claude, Gemini or an OpenAI-compatible service (OpenAI, OpenRouter,
+                  Choose Claude, Gemini, DeepSeek or an OpenAI-compatible service (OpenAI, OpenRouter,
                   or a model running on your own Mac in Ollama or LM Studio). Paste your key,
                   press <b>Save key</b>, then <b>Test connection</b> and pick a model. On a
                   Mac the key goes into your Keychain, not into the add-on's settings. You
