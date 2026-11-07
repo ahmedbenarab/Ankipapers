@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Save, Zap, AlertTriangle } from 'lucide-react'
+import { Save, Zap, AlertTriangle, CopyPlus } from 'lucide-react'
 
 export default function BottomToolbar({ cardCounts, viewMode, modifiedAt, draftCount = 0, weakCount = 0, weakOnly = false, onToggleWeakOnly, onSave, onGenerate, isSaving: externalIsSaving }) {
   // Local state to track if an operation is currently running
@@ -71,7 +71,7 @@ export default function BottomToolbar({ cardCounts, viewMode, modifiedAt, draftC
         )}
       </span>
       {draftCount > 0 && (
-        <span className="draft-count" title="Drafted cards waiting to be accepted. They aren't saved and Generate skips them.">
+        <span className="draft-count" title="Drafted cards waiting to be accepted. They aren't saved and Add Cards to Anki skips them.">
           +{draftCount} draft{draftCount === 1 ? '' : 's'}
         </span>
       )}
@@ -105,12 +105,12 @@ export default function BottomToolbar({ cardCounts, viewMode, modifiedAt, draftC
       <button 
         className={`generate-btn ${isBusy ? 'disabled' : ''}`} 
         onClick={handleGenerate} 
-        title="Generate Cards (Ctrl+G)"
+        title="Add Cards to Anki: creates, updates and removes this paper’s cards (Ctrl+G)"
         disabled={isBusy}
         style={{ opacity: isBusy ? 0.5 : 1, cursor: isBusy ? 'not-allowed' : 'pointer' }}
       >
-        <Zap size={14} />
-        <span>{localIsGenerating ? 'Generating...' : 'Generate Cards'}</span>
+        <CopyPlus size={14} />
+        <span>{localIsGenerating ? 'Adding...' : 'Add Cards to Anki'}</span>
       </button>
       </div>
     </div>

@@ -1,8 +1,8 @@
 import React from 'react'
-import { Zap, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { CopyPlus, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 /**
- * "Generate all cards in folder" — every screen except the conflict choice,
+ * "Add all cards in folder to Anki" — every screen except the conflict choice,
  * which reuses GenerateConflictModal. App.jsx drives it through `state`:
  *
  *   { phase: 'empty',    folder }
@@ -25,7 +25,7 @@ export default function FolderGenerateDialog({ state, onConfirm, onClose }) {
       <div className="modal folder-gen-modal" onClick={(e) => e.stopPropagation()}>
         {state.phase === 'empty' && (
           <>
-            <div className="modal-title"><Zap size={18} /> Generate all cards in folder</div>
+            <div className="modal-title"><CopyPlus size={18} /> Add all cards in folder to Anki</div>
             <p className="folder-gen-text">“{folderName}” has no papers.</p>
             <div className="generate-conflict-actions">
               <button type="button" className="modal-btn primary" onClick={onClose}>OK</button>
@@ -35,25 +35,25 @@ export default function FolderGenerateDialog({ state, onConfirm, onClose }) {
 
         {state.phase === 'confirm' && (
           <>
-            <div className="modal-title"><Zap size={18} /> Generate all cards in folder</div>
+            <div className="modal-title"><CopyPlus size={18} /> Add all cards in folder to Anki</div>
             <p className="folder-gen-text">
-              Generate cards for {plural(state.papers.length, 'paper')} in “{folderName}”
+              Add the cards of {plural(state.papers.length, 'paper')} in “{folderName}” to Anki
               {state.includesSubfolders ? ', including subfolders' : ''}?
             </p>
             <div className="generate-conflict-actions">
               <button type="button" className="modal-btn" onClick={onClose}>Cancel</button>
-              <button type="button" className="modal-btn primary" onClick={onConfirm}>Generate</button>
+              <button type="button" className="modal-btn primary" onClick={onConfirm}>Add to Anki</button>
             </div>
           </>
         )}
 
         {busy && (
           <>
-            <div className="modal-title"><Zap size={18} /> Generating “{folderName}”</div>
+            <div className="modal-title"><CopyPlus size={18} /> Adding “{folderName}” to Anki</div>
             <p className="folder-gen-status">
               {state.phase === 'checking'
                 ? `Checking for edits in Anki… ${state.index + 1} of ${state.total}`
-                : `Generating ${state.index + 1} of ${state.total}: ${state.title}`}
+                : `Adding ${state.index + 1} of ${state.total}: ${state.title}`}
             </p>
             <div className="folder-gen-bar" role="progressbar"
               aria-valuemin={0} aria-valuemax={state.total} aria-valuenow={state.index}>
@@ -63,7 +63,7 @@ export default function FolderGenerateDialog({ state, onConfirm, onClose }) {
               />
             </div>
             <p className="folder-gen-warning">
-              <AlertTriangle size={14} /> Do Not Close AnkiPapers While Cards Are Being Generated.
+              <AlertTriangle size={14} /> Do Not Close AnkiPapers While Cards Are Being Added.
             </p>
           </>
         )}
@@ -82,7 +82,7 @@ export default function FolderGenerateDialog({ state, onConfirm, onClose }) {
             {state.failures.length > 0 && (
               <>
                 <p className="folder-gen-text">
-                  {plural(state.failures.length, 'paper')} could not be generated:
+                  {plural(state.failures.length, 'paper')} could not be added:
                 </p>
                 <ul className="generate-conflict-list">
                   {state.failures.map((f) => (

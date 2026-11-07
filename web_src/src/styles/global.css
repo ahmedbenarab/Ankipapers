@@ -1435,6 +1435,9 @@ textarea.block-input.block-input-textarea {
   padding: 7px 24px; cursor: pointer; transition: all var(--transition);
   box-shadow: 0 2px 10px var(--accent-glow);
   display: flex; align-items: center; gap: 5px;
+  /* One line, however narrow the window: wrapped, the label stacked up and
+     the button grew taller than the bar. */
+  white-space: nowrap; flex-shrink: 0;
 }
 .generate-btn:hover { box-shadow: 0 4px 16px rgba(var(--tint-rgb), 0.4); transform: translateY(-1px); }
 .generate-btn:active { transform: translateY(0); }

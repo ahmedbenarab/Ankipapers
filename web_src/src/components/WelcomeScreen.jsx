@@ -210,7 +210,7 @@ export default function WelcomeScreen({
             disabled={!lastPaper}
             onClick={() => lastPaper && onSelectPaper?.(lastPaper.id)}
           >
-            <div className="home-tile-label">Last generated</div>
+            <div className="home-tile-label">Last added to Anki</div>
             {last ? (
               <>
                 <div className="home-tile-paper">{lastPaper?.title || last.title || 'A deleted paper'}</div>

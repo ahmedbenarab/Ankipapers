@@ -1136,14 +1136,14 @@ export default function App() {
     try {
       const saved = await persistPaper(await reconcileBacklinks(paper))
       if (saved && saved.error) {
-        showToast(`Save failed, not generating: ${saved.error}`, 'error')
+        showToast(`Save failed, so no cards were added: ${saved.error}`, 'error')
         return
       }
       const result = await generateCards(paper.id, policy)
       await refreshPapers()
       if (result.error === 'anki_edit_conflicts') {
         showToast(
-          `Generate stopped: ${result.conflicts?.length ?? 0} card(s) edited in Anki (Settings: abort on conflict)`,
+          `Cards not added: ${result.conflicts?.length ?? 0} card(s) edited in Anki (Settings: stop on conflict)`,
           'error'
         )
         return
@@ -1163,7 +1163,7 @@ export default function App() {
       if (result.deleted) parts.push(`${result.deleted} removed`)
       showToast(parts.join(', '), 'success')
     } catch (e) {
-      showToast(`Generate failed: ${e?.message || e}`, 'error')
+      showToast(`Adding cards to Anki failed: ${e?.message || e}`, 'error')
     } finally {
       setBusy(false)
     }
@@ -1249,7 +1249,7 @@ export default function App() {
   }, [settings.anki_edit_conflict, runGenerateWithPolicy, setBusy, persistPaper])
 
   // ─── Generate a whole folder ─────────────────────
-  // Right-click a folder → "Generate all cards in folder". Runs the same
+  // Right-click a folder → "Add all cards in folder to Anki". Runs the same
   // per-paper Generate on every paper in the folder and its subfolders, one at
   // a time, after one confirmation and -- with the "Ask" policy -- one combined
   // conflict choice for the whole folder. busy stays 'generating' for the whole

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
-import { FilePlus, FolderPlus, FileText, Folder, FolderOpen, ChevronRight, ChevronDown, Trash2, Pencil, ExternalLink, Home, X, Settings, CornerUpLeft, Search, PanelLeftClose, PanelLeftOpen, Zap, ListTree, BookOpen, Globe, Paperclip, Share } from 'lucide-react'
+import { FilePlus, FolderPlus, FileText, Folder, FolderOpen, ChevronRight, ChevronDown, Trash2, Pencil, ExternalLink, Home, X, Settings, CircleHelp, CornerUpLeft, Search, PanelLeftClose, PanelLeftOpen, CopyPlus, ListTree, BookOpen, Globe, Paperclip, Share } from 'lucide-react'
 import OutlinePanel from './OutlinePanel'
 
 // Hovering the rail slides the tree out; both numbers are deliberate. 260ms in
@@ -763,8 +763,8 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
                       setContextMenu(null)
                       onGenerateFolder(f.path)
                     }}>
-                      <Zap size={13} />
-                      <span>Generate all cards in folder</span>
+                      <CopyPlus size={13} />
+                      <span>Add all cards in folder to Anki</span>
                     </div>
                     {onShareFolder && (
                       <div className="context-item" title="Every paper in it and its subfolders, with their pictures, as one .zip"
