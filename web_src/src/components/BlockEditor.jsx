@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
-import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
+import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, EyeOff } from 'lucide-react'
 import { openInBrowser, pasteImage, getClipboardText, getOcclusionCounts, createOcclusion, editOcclusion, OCCLUSIONS_CHANGED_EVENT } from '../bridge'
 import WeakSpotHover from './WeakSpotHover'
 import DraftGroup from './DraftGroup'
@@ -271,7 +271,7 @@ function mediaImageName(line) {
 }
 
 // ─── Rendered block ─────────────────────────────────
-function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion }) {
+function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion }) {
   const t = stripApBlockId(line).trim()
 
   // Cells come from the shared parseTableRow rather than a local copy. The
@@ -313,10 +313,24 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
       }
       const src = resolveMediaSrc(m[2], mediaDir)
       const imgStyle = { maxWidth: width ? `${width}px` : '400px' }
+      // Only pictures in Anki's media folder can be occluded.
+      const occludable = !!onCreateOcclusion && !!mediaImageName(line)
       return (
         <div className="block-image">
           <span className="block-image-frame">
             <img src={src} alt={altText} style={imgStyle} />
+            {occludable && (
+              <button
+                type="button"
+                className="io-create"
+                title="Create image occlusion cards from this picture"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCreateOcclusion(m[2].trim()) }}
+              >
+                <EyeOff size={13} />
+                <span>Occlude</span>
+              </button>
+            )}
             {occlusionCards > 0 && (
               <button
                 type="button"
@@ -737,6 +751,7 @@ const Block = React.memo(function Block({
   codeActive = false,
   occlusionCards = 0,
   onOpenOcclusion,
+  onCreateOcclusion,
 }) {
   const inputRef = useRef(null)
 
@@ -884,7 +899,7 @@ const Block = React.memo(function Block({
         ) : codeInfo ? (
           <CodeRow type={type} info={codeInfo} active={codeActive} text={actualText} depth={codeSplit ? codeSplit.depth : 0} />
         ) : (
-          <RenderBlock line={actualText} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} />
+          <RenderBlock line={actualText} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} />
         )}
       </div>
     </div>
@@ -2199,14 +2214,21 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     if (!sel || sel.length !== 1) return null
     return mediaImageName(content.split('\n')[sel[0]] || '')
   })()
-  const createOcclusionAtMenu = useCallback(async () => {
-    const name = menuImageName
-    closeBlockMenu()
+  // Read through a ref so the hover button's callback stays stable and every
+  // <Block/> keeps its memoized props.
+  const paperIdRef = useRef(paperId)
+  paperIdRef.current = paperId
+  const createOcclusionFor = useCallback(async (name) => {
     if (!name) return
-    const r = await createOcclusion(paperId, name)
+    const r = await createOcclusion(paperIdRef.current, name)
     // A busy Add window explains itself in Anki.
     if (r?.error && r.error !== 'add_window_busy') notifyRef.current?.(r.error, 'error')
-  }, [menuImageName, paperId, closeBlockMenu])
+  }, [])
+  const createOcclusionAtMenu = useCallback(() => {
+    const name = menuImageName
+    closeBlockMenu()
+    createOcclusionFor(name)
+  }, [menuImageName, closeBlockMenu, createOcclusionFor])
   const editOcclusionAtMenu = useCallback(() => {
     const name = menuImageName
     closeBlockMenu()
@@ -3188,6 +3210,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 weakLapses={weak?.lapses || 0}
                 occlusionCards={displayType === 'image' ? (occlusions[mediaImageName(displayLine)]?.cards || 0) : 0}
                 onOpenOcclusion={openOcclusion}
+                onCreateOcclusion={createOcclusionFor}
                 codeInfo={b.code || null}
                 codeActive={!!b.code && focusedIndex !== null && focusedIndex >= b.code.open && focusedIndex <= b.code.close}
               />

@@ -1378,6 +1378,20 @@ textarea.block-input.block-input-textarea {
   transition: filter var(--transition);
 }
 .io-badge:hover { filter: brightness(1.12); }
+/* "Occlude" on a picture, shown while the pointer is over it. */
+.io-create {
+  position: absolute; top: 8px; right: 8px;
+  height: 26px; padding: 0 10px 0 8px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 5px;
+  background: var(--accent); color: var(--on-accent); border: none; border-radius: 13px;
+  font-family: var(--font-sans); font-size: 12px; font-weight: 600; line-height: 1;
+  cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0; transform: translateY(-2px); pointer-events: none;
+  transition: opacity var(--transition), transform var(--transition), filter var(--transition);
+}
+.block-image-frame:hover .io-create,
+.io-create:focus-visible { opacity: 1; transform: none; pointer-events: auto; }
+.io-create:hover { filter: brightness(1.12); }
 .block-image-caption { font-size: 12px; color: var(--text-muted); font-style: italic; margin-top: 4px; }
 .block-image-size { color: var(--accent); font-style: normal; font-size: 11px; }
 .block-image-resize {

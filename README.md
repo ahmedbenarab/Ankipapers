@@ -42,7 +42,7 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 ## What's new
 
 **Image occlusion from your pictures.**
-- **Create Image Occlusion Cards:** right-click a picture in a paper and choose **Create Image Occlusion Cards**. Anki's Add window opens on its built-in **Image Occlusion** note type, with the picture already in the mask editor and the deck set to the paper's deck. Draw your masks and press Add. See [Image occlusion](#image-occlusion).
+- **Create Image Occlusion Cards:** hover over a picture in a paper and click **Occlude** in its top-right corner, or right-click it and choose **Create Image Occlusion Cards**. Anki's Add window opens on its built-in **Image Occlusion** note type, with the picture already in the mask editor and the deck set to the paper's deck. Draw your masks and press Add. See [Image occlusion](#image-occlusion).
 - **A count on the picture:** once a picture has occlusion cards, a small badge in its lower-right corner shows how many. It updates by itself when you add, edit or delete them in Anki.
 - **Click the badge to edit:** it opens those notes in Anki's Browser with the masks showing. Right-click → **Edit Image Occlusion Cards** does the same.
 
@@ -253,7 +253,7 @@ Without `[[NH]]`, the card would helpfully announce the answer in its own header
 
 Hide parts of a picture and get asked what's underneath, using Anki's own **Image Occlusion** (built into Anki 23.10 and later; no other add-on needed).
 
-1. **Right-click a picture** in a paper and choose **Create Image Occlusion Cards**. Anki's Add window opens on the Image Occlusion note type, with the picture loaded in the mask editor and the deck set to the paper's deck.
+1. **Hover over a picture** in a paper and click **Occlude** in its top-right corner (or right-click it and choose **Create Image Occlusion Cards**). Anki's Add window opens on the Image Occlusion note type, with the picture loaded in the mask editor and the deck set to the paper's deck.
 2. **Draw a mask** over each thing to hide, then press **Add**. Each mask (or group of masks) becomes one card.
 3. **Back in the paper**, the picture shows a small badge in its lower-right corner with the number of occlusion cards made from it. It updates as soon as you add, edit or delete them in Anki.
 4. **Click the badge** to open those notes in Anki's Browser, where the mask editor lets you move, add or remove masks. Right-click → **Edit Image Occlusion Cards** does the same.
