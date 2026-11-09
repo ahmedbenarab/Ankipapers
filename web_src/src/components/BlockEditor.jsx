@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
-import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, Flag } from 'lucide-react'
+import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, Flag, SquareDashedMousePointer } from 'lucide-react'
 import { openInBrowser, pasteImage, getClipboardText, getOcclusionCounts, createOcclusion, editOcclusion, OCCLUSIONS_CHANGED_EVENT } from '../bridge'
 import WeakSpotHover from './WeakSpotHover'
 import DraftGroup from './DraftGroup'
@@ -190,6 +190,20 @@ function normalizePastedText(raw) {
     .trim()
 }
 
+/**
+ * What a block's textarea leaves off the start of a line: the outline's
+ * indent, plus the run of ➵ on a code line. Cursor offsets read from the
+ * textarea count from after it, so anything that splices text in at the
+ * cursor has to take this off first and put it back after.
+ */
+function textareaHead(lines, index, display) {
+  const blk = codeLineMap(lines).get(index)
+  if (blk && index !== blk.open && index !== blk.close) {
+    return splitCodeLine(display, outlineIndent(stripApBlockId(lines[blk.open]))).prefix
+  }
+  return (display.match(/^[ \t]*/) || [''])[0]
+}
+
 function scheduleRestoreSelection(inputRef, start, end) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -308,7 +322,7 @@ function CardMarks({ ankiFlag, suspendedCards, cardCount }) {
   )
 }
 
-function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '' }) {
+function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '' }) {
   const t = stripApBlockId(line).trim()
 
   // Cells come from the shared parseTableRow rather than a local copy. The
@@ -368,10 +382,24 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
       }
       const src = resolveMediaSrc(m[2], mediaDir)
       const imgStyle = { maxWidth: width ? `${width}px` : '400px' }
+      // Only pictures in Anki's media folder can be occluded.
+      const occludable = !!onCreateOcclusion && !!mediaImageName(line)
       return (
         <div className="block-image">
           <span className="block-image-frame">
             <img src={src} alt={altText} style={imgStyle} />
+            {occludable && (
+              <button
+                type="button"
+                className="io-create"
+                title="Create image occlusion cards from this picture"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onCreateOcclusion(m[2].trim()) }}
+              >
+                <SquareDashedMousePointer size={14} />
+                <span>Occlude</span>
+              </button>
+            )}
             {occlusionCards > 0 && (
               <button
                 type="button"
@@ -783,6 +811,7 @@ const Block = React.memo(function Block({
   onBlockContextMenu,
   onOpenLink,
   activeBlockInputRef,
+  focusCaretRef,
   hasChildren,
   isCollapsed,
   onToggleCollapse,
@@ -799,6 +828,7 @@ const Block = React.memo(function Block({
   cardCount = 0,
   headCards = 0,
   headSus = '',
+  onCreateOcclusion,
 }) {
   const inputRef = useRef(null)
 
@@ -815,11 +845,15 @@ const Block = React.memo(function Block({
   useEffect(() => {
     if (focused && inputRef.current) {
       inputRef.current.focus()
-      // Put cursor at end
+      // Put the cursor where the editor asked for it (Enter, Backspace), else
+      // at the end.
       const len = inputRef.current.value.length
-      inputRef.current.setSelectionRange(len, len)
+      const want = focusCaretRef?.current
+      if (focusCaretRef) focusCaretRef.current = null
+      const at = want == null ? len : Math.max(0, Math.min(want, len))
+      inputRef.current.setSelectionRange(at, at)
     }
-  }, [focused])
+  }, [focused, focusCaretRef])
 
   useLayoutEffect(() => {
     if (!focused) return
@@ -944,7 +978,7 @@ const Block = React.memo(function Block({
         ) : codeInfo ? (
           <CodeRow type={type} info={codeInfo} active={codeActive} text={actualText} depth={codeSplit ? codeSplit.depth : 0} />
         ) : (
-          <RenderBlock line={stripHeadingMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} />
+          <RenderBlock line={stripHeadingMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} />
         )}
       </div>
     </div>
@@ -1102,6 +1136,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   const containerRef = useRef(null)
   const blockMenuRef = useRef(null)
   const activeBlockInputRef = useRef(null)
+  // Caret offset for the next line to take focus; Block reads and clears it.
+  const focusCaretRef = useRef(null)
 
   useEffect(() => {
     if (!lasso) return
@@ -1637,8 +1673,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         lines[index - 1] = prevDisplay + actualText + prevSuf
         lines.splice(index, 1)
         onChange(lines.join('\n'))
+        focusCaretRef.current = joinAt
         setFocusedIndex(index - 1)
-        scheduleRestoreSelection(activeBlockInputRef, joinAt, joinAt)
         return
       }
     }
@@ -1694,7 +1730,10 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
           out[0] = attachApSuffix(out[0], currentApSuf)
           lines.splice(index, 1, ...out, leadingSpaces + after)
           onChange(lines.join('\n'))
-          setTimeout(() => setFocusedIndex(index + last + 1), 10)
+          setTimeout(() => {
+            focusCaretRef.current = 0
+            setFocusedIndex(index + last + 1)
+          }, 10)
         }
         return
       }
@@ -1777,7 +1816,12 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       lines[index] = top
       lines.splice(index + 1, 0, bottom)
       onChange(lines.join('\n'))
-      setTimeout(() => setFocusedIndex(index + 1), 10)
+      // A newly focused line puts the caret at its end; the text that moved
+      // down should have it at its start, where it was.
+      setTimeout(() => {
+        focusCaretRef.current = 0
+        setFocusedIndex(index + 1)
+      }, 10)
       return
     }
 
@@ -1793,16 +1837,28 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         const prevLine = lines[index - 1]
         const suf = extractApBlockSuffix(prevLine)
         const prevDisplay = stripApBlockId(prevLine)
-        
+        // Where the two lines meet, counted in the textarea's text, which
+        // leaves off the line's indent.
+        const joinAt = prevDisplay.length - (prevDisplay.match(/^[ \t]*/) || [''])[0].length
+
         const merged = prevDisplay + actualText
         lines[index - 1] = attachApSuffix(merged, suf)
-        
+
         lines.splice(index, 1)
-        
+
         onChange(lines.join('\n'))
+        focusCaretRef.current = joinAt
         setFocusedIndex(index - 1)
         return
       }
+    }
+
+    // A table is edited as one block from its first row, so the arrows step
+    // over its other rows: landing on one would open that row on its own.
+    const tableBodyRow = (j) => {
+      if (blocks[j]?.code) return null
+      const b = findTableBounds(lines, j)
+      return b && b.start !== j ? b : null
     }
 
     if (e.key === 'ArrowUp' && index > 0) {
@@ -1811,24 +1867,32 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       if (atStart) {
         e.preventDefault()
         let nextIndex = index - 1
-        while (nextIndex > 0 && blocks[nextIndex]?.isHidden) {
-           nextIndex--
+        for (;;) {
+          const body = tableBodyRow(nextIndex)
+          if (body) nextIndex = body.start
+          else if (nextIndex > 0 && blocks[nextIndex]?.isHidden) nextIndex--
+          else break
         }
         setFocusedIndex(nextIndex)
       }
     }
 
-    if (e.key === 'ArrowDown' && index < lines.length - 1) {
+    // From a table, the line after it is past its last row.
+    const lastOfBlock = inTable ? tableBounds.end : index
+    if (e.key === 'ArrowDown' && lastOfBlock < lines.length - 1) {
       const ta = e.target
       const len = ta.value.length
       const atEnd = ta.selectionStart === len && ta.selectionEnd === len
       if (atEnd) {
         e.preventDefault()
-        let nextIndex = index + 1
-        while (nextIndex < lines.length - 1 && blocks[nextIndex]?.isHidden) {
-           nextIndex++
+        let nextIndex = lastOfBlock + 1
+        while (nextIndex < lines.length) {
+          const body = tableBodyRow(nextIndex)
+          if (body) nextIndex = body.end + 1
+          else if (blocks[nextIndex]?.isHidden) nextIndex++
+          else break
         }
-        setFocusedIndex(nextIndex)
+        if (nextIndex < lines.length) setFocusedIndex(nextIndex)
       }
     }
 
@@ -2265,14 +2329,21 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     if (!sel || sel.length !== 1) return null
     return mediaImageName(content.split('\n')[sel[0]] || '')
   })()
-  const createOcclusionAtMenu = useCallback(async () => {
-    const name = menuImageName
-    closeBlockMenu()
+  // Read through a ref so the hover button's callback stays stable and every
+  // <Block/> keeps its memoized props.
+  const paperIdRef = useRef(paperId)
+  paperIdRef.current = paperId
+  const createOcclusionFor = useCallback(async (name) => {
     if (!name) return
-    const r = await createOcclusion(paperId, name)
+    const r = await createOcclusion(paperIdRef.current, name)
     // A busy Add window explains itself in Anki.
     if (r?.error && r.error !== 'add_window_busy') notifyRef.current?.(r.error, 'error')
-  }, [menuImageName, paperId, closeBlockMenu])
+  }, [])
+  const createOcclusionAtMenu = useCallback(() => {
+    const name = menuImageName
+    closeBlockMenu()
+    createOcclusionFor(name)
+  }, [menuImageName, closeBlockMenu, createOcclusionFor])
   const editOcclusionAtMenu = useCallback(() => {
     const name = menuImageName
     closeBlockMenu()
@@ -2364,7 +2435,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const full = lines[i] ?? ''
     const apSuf = extractApBlockSuffix(full)
     const display = stripApBlockId(full)
-    const leadingSpaces = (display.match(/^[ \t]*/) || [''])[0]
+    const leadingSpaces = textareaHead(lines, i, display)
     // The block's textarea holds the line WITHOUT its indent (see the
     // `value={actualText}` textarea below), so selStart/selEnd index this
     // string, not the stored line.
@@ -2412,6 +2483,28 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   useEffect(() => {
     const onKey = (e) => {
       if (!((e.key === 'V' || e.key === 'v') && e.shiftKey && (e.ctrlKey || e.metaKey))) return
+
+      // Captured now, synchronously. The clipboard read that follows is async.
+      // Only claim the chord for the editor: a line being edited, or blocks
+      // selected while no other text box has focus. Anywhere else (the Ask
+      // panel, search, settings) the keystroke is left alone.
+      const idx = focusedIndexRef.current
+      const input = activeBlockInputRef.current
+      const active = document.activeElement
+      const inEditorLine = !!input && active === input
+      const target = (idx !== null && inEditorLine)
+        ? {
+            index: idx,
+            selStart: input.selectionStart ?? 0,
+            selEnd: input.selectionEnd ?? input.selectionStart ?? 0,
+          }
+        : null
+      const typingElsewhere = !inEditorLine && !!active
+        && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
+      const sel = selectedIndicesRef.current
+      const blocks = (!target && !typingElsewhere && sel && sel.size) ? [...sel] : null
+      if (!target && !blocks) return
+
       e.preventDefault()
       e.stopPropagation()
 
@@ -2420,20 +2513,6 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       // braces: a paste event that still slips through within the window
       // below is ignored rather than inserted a second time.
       plainPasteGuardRef.current = Date.now()
-
-      // Captured now, synchronously. The clipboard read that follows is async.
-      const idx = focusedIndexRef.current
-      const input = activeBlockInputRef.current
-      const target = (idx !== null && input)
-        ? {
-            index: idx,
-            selStart: input.selectionStart ?? 0,
-            selEnd: input.selectionEnd ?? input.selectionStart ?? 0,
-          }
-        : null
-      const sel = selectedIndicesRef.current
-      const blocks = (!target && sel && sel.size) ? [...sel] : null
-      if (!target && !blocks) return
 
       pastePlainText(target, blocks)
     }
@@ -2626,8 +2705,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                   return stripApBlockId(full)
                 })()
 
-            const spacesMatch = fullText.match(/^[ \t]*/)
-            const leadingSpaces = tableHead ? '' : (spacesMatch ? spacesMatch[0] : '')
+            const leadingSpaces = tableHead ? '' : textareaHead(lines, focusedIndex, fullText)
             let actualText = tableHead ? fullText : fullText.slice(leadingSpaces.length)
 
             const input = activeBlockInputRef.current
@@ -2771,9 +2849,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
           apSuffix = extractApBlockSuffix(full)
           return stripApBlockId(full)
         })()
-        
-    const spacesMatch = fullText.match(/^[ \t]*/)
-    const leadingSpaces = tableHead ? '' : (spacesMatch ? spacesMatch[0] : '')
+
+    const leadingSpaces = tableHead ? '' : textareaHead(lines, focusedIndex, fullText)
     let line = tableHead ? fullText : fullText.slice(leadingSpaces.length)
 
     const input = activeBlockInputRef.current
@@ -3013,8 +3090,10 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     focusBlock: (index) => {
       setSelectedIndices(new Set())
       setFocusedIndex(index)
+      // Found by line number, not by position among the rows: a table's rows
+      // after its first are not drawn, so positions stop matching lines.
       setTimeout(() => {
-        const el = containerRef.current?.children[index]
+        const el = containerRef.current?.querySelector(`[data-line="${index}"]`)
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }, 50)
     },
@@ -3269,6 +3348,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 onBlockContextMenu={handleBlockContextMenu}
                 onOpenLink={handleOpenLink}
                 activeBlockInputRef={activeBlockInputRef}
+                focusCaretRef={focusCaretRef}
                 hasChildren={b.hasChildren}
                 isCollapsed={collapsedIds.has(b.id)}
                 onToggleCollapse={toggleCollapse}
@@ -3283,6 +3363,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 cardCount={st?.cards || 0}
                 headCards={showCardCounts && head ? head.cards : 0}
                 headSus={headSus}
+                onCreateOcclusion={createOcclusionFor}
                 codeInfo={b.code || null}
                 codeActive={!!b.code && focusedIndex !== null && focusedIndex >= b.code.open && focusedIndex <= b.code.close}
               />

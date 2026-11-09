@@ -311,7 +311,8 @@ export async function openSourceAtLocation(linkData) {
 // Table shape: { [name]: (args) => value }, mirroring the real dispatch dict
 // in gui/bridge.py so `call(name, args)` can use either transparently.
 function createMockBridge() {
-  const papers = [
+  const demo = window.__apDemo;  // set by main.jsx for ?demo=<name>
+  const papers = demo?.papers || [
     {
       id: 'demo-1', title: 'Cell Biology',
       content: '# Cell Biology\n\n## Organelles\n\nWhat is the powerhouse of the cell? >> Mitochondria\n\nATP <> Adenosine Triphosphate\n\nThe {{mitochondria}} is the powerhouse of the cell.\n\n{{c1::ATP}} is produced through {{c2::oxidative phosphorylation}}.\n\n## Cell Membrane\n\n- **Phospholipid bilayer** forms the basic structure\n\n> The fluid mosaic model describes membrane structure\n\n---\n\nWhat is endocytosis? >> The process by which cells absorb molecules\n',
@@ -338,7 +339,7 @@ function createMockBridge() {
       created_at: Date.now() / 1000, modified_at: Date.now() / 1000,
     })),
   ];
-  const folderTree = { name: 'Root', children: [
+  const folderTree = demo?.folderTree || { name: 'Root', children: [
     { type: 'folder', name: 'Biology', path: 'Biology', children: [] },
     { type: 'folder', name: 'Medicine', path: 'Medicine', children: [] },
     { type: 'folder', name: 'Software Engineering', path: 'Software Engineering', children: [
@@ -357,7 +358,7 @@ function createMockBridge() {
   const sourceLinks = {};
   // Dev stand-in for Anki: "creating" occlusion cards on a picture adds 3.
   const occlusions = {};
-  return {
+  const table = {
     ...createAiSourcesMock(papers),
     list_papers: () => papers,
     load_paper: ({ paper_id }) => papers.find(x => x.id === paper_id) || { error: 'not found' },
@@ -502,6 +503,20 @@ function createMockBridge() {
     load_source_link: ({ paper_id, block_id }) => sourceLinks[`${paper_id}:${block_id}`] || { error: 'Source link not found' },
     open_source_at_location: () => ({ ok: true }),
   };
+  if (demo) {
+    if (demo.decks) table.get_decks = () => demo.decks;
+    if (demo.mediaBase) table.get_media_dir = () => ({ path: '', base_url: demo.mediaBase });
+    if (demo.weak) {
+      const base = table.get_note_stats;
+      table.get_note_stats = ({ note_ids }) => {
+        const { stats } = base({ note_ids: [] });
+        for (const n of note_ids || []) stats[n] = demo.weak[n] || base({ note_ids: [-1] }).stats[-1];
+        return { stats };
+      };
+    }
+    demo.patch?.(table);
+  }
+  return table;
 }
 
 // Expose the wrapper module on window for the Stage 4 automated regression

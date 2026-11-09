@@ -110,13 +110,15 @@ export function createAiSourcesMock(papers) {
   const norm = (s) => (s || '').toLowerCase().replace(/[^a-z ]/g, '').trim().replace(/^intro\b/, 'introduction').replace(/s\b/g, '').replace(/\s+/g, ' ')
   return {
     ai_status: () => ({ provider: cfg.provider, model: cfg.model, base_url: '', key_store: 'keychain',
-      keys: Object.fromEntries(['anthropic', 'gemini', 'openai'].map((p) => [p, { saved: !!keys[p], hint: keys[p] ? '••••••••' + keys[p].slice(-4) : '' }])),
+      keys: Object.fromEntries(['anthropic', 'gemini', 'deepseek', 'openai'].map((p) => [p, { saved: !!keys[p], hint: keys[p] ? '••••••••' + keys[p].slice(-4) : '' }])),
       usage: { drafts: 12, chats: 4, input_tokens: 18230, output_tokens: 4120 }, default_rules: 'One fact per card; keep answers under 8 words.\nPrefer cloze for numbers, doses, cut-offs and short lists.\nKeep the source\'s wording. Don\'t add facts that aren\'t in the selected text.\nNever invent a heading or a tag.', ready: true }),
     ai_save_key: ({ provider, key }) => { keys[provider] = key; return { ok: true, hint: '••••••••' + key.slice(-4), where: 'keychain' } },
     ai_delete_key: ({ provider }) => { delete keys[provider]; return { ok: true } },
     ai_test: ({ provider }) => startJob(provider === 'anthropic'
       ? { status: 'done', result: { models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'] } }
-      : { status: 'done', result: { models: ['model-a', 'model-b'] } }),
+      : provider === 'deepseek'
+        ? { status: 'done', result: { models: ['deepseek-chat', 'deepseek-reasoner'] } }
+        : { status: 'done', result: { models: ['model-a', 'model-b'] } }),
     ai_draft: ({ text, redo_of }) => {
       const cards = redo_of
         ? ['Sacubitril/valsartan <> ARNI (angiotensin receptor–neprilysin inhibitor)']

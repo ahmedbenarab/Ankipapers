@@ -434,7 +434,7 @@ const SourceEditor = forwardRef(function SourceEditor({ content, onChange, onCar
           title={
             noteIdAtCursor != null
               ? `Open in Anki Browse (nid:${noteIdAtCursor})`
-              : 'Place cursor on a line with a generated card, then run Generate cards if needed'
+              : 'Place cursor on a line with a generated card, then press Add Cards to Anki if needed'
           }
           onClick={handleOpenInBrowse}
         >

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anki Papers for Medical Students</title>
+<style>
+  :root {
+    --bg: #070f22; --bg2: #0b1730; --surface: #132548; --line: #23375e;
+    --text: #e9f1fb; --text2: #a9bcd8; --muted: #6f86ab; --accent: #4b9cd3;
+    --basic: #4ade80; --rev: #f0b45a; --cloze: #f472b6;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg: #f3f7fb; --bg2: #ffffff; --surface: #e3ebf5; --line: #d3dfee; --text: #0f2a55; --text2: #34507a; --muted: #6a80a3; --accent: #19468d; --basic: #15803d; --rev: #a8620a; --cloze: #be185d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 Inter, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 56px 16px 96px; }
+  header .kicker { color: var(--accent); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; font-size: 13px; }
+  h1 { font-size: clamp(32px, 5vw, 48px); line-height: 1.1; margin: 10px 0 14px; letter-spacing: -0.02em; }
+  header p { color: var(--text2); font-size: 19px; max-width: 760px; margin: 0; }
+  nav { margin: 30px 0 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+  nav a { color: var(--text2); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 5px 13px; font-size: 14px; }
+  nav a:hover { color: var(--text); border-color: var(--accent); }
+  section { margin-top: 72px; }
+  h2 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 .n { color: var(--accent); margin-right: 10px; font-variant-numeric: tabular-nums; }
+  .lead { color: var(--text2); margin: 0 0 18px; max-width: 780px; }
+  figure { margin: 18px 0 0; }
+  figure img { width: 100%; display: block; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+  ul.steps { padding-left: 20px; color: var(--text2); max-width: 820px; }
+  ul.steps li { margin: 6px 0; }
+  ul.steps b, .lead b { color: var(--text); }
+  code { font-family: "JetBrains Mono", Consolas, monospace; font-size: .9em; background: var(--surface); border-radius: 5px; padding: 1px 6px; }
+  .tip { margin-top: 18px; background: var(--bg2); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; padding: 14px 18px; color: var(--text2); max-width: 860px; }
+  .tip b { color: var(--text); }
+  kbd { font-family: inherit; font-size: .85em; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 6px; background: var(--bg2); color: var(--text); }
+  footer { margin-top: 80px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="kicker">Anki Papers · guide for medical students</div>
+    <h1>Write your notes once.<br>Review them for years.</h1>
+    <p>Anki Papers is an Anki add-on for writing lecture notes as "papers": one document per topic. Mark the lines worth remembering and they become Anki cards, which stay linked to your notes as you edit them.</p>
+    <nav>
+      <a href="#cards">Writing cards</a><a href="#loop">Study loop</a><a href="#editor">The editor</a>
+      <a href="#add">Add to Anki</a><a href="#weak">Weak spots</a><a href="#sources">Lecture sources</a>
+      <a href="#draft">Draft cards</a><a href="#ask">Ask</a><a href="#links">Linking topics</a>
+      <a href="#occlusion">Image occlusion</a><a href="#search">Search</a><a href="#home">Home</a>
+    </nav>
+  </header>
+
+  <section id="cards">
+    <h2><span class="n">01</span>Four ways to mark a line</h2>
+    <p class="lead">Anything you don't mark stays plain reading text. A marked line becomes a <b style="color:var(--basic)">basic</b>, <b style="color:var(--rev)">reversible</b> or <b style="color:var(--cloze)">cloze</b> card, and the headings above it ride along as context.</p>
+    <figure><img src="illustrations/01-how-lines-become-cards.png" alt="How each kind of marked line becomes an Anki card"></figure>
+  </section>
+
+  <section id="loop">
+    <h2><span class="n">02</span>A study loop that fits medical school</h2>
+    <p class="lead">One paper per topic (Heart failure, Anaemia, Brachial plexus…), organised in folders by year and system. Your notes and your cards stay in one place.</p>
+    <figure><img src="illustrations/02-study-loop.png" alt="Five-step study loop from lecture to review"></figure>
+  </section>
+
+  <section id="editor">
+    <h2><span class="n">03</span>The editor at a glance</h2>
+    <p class="lead">Each card line shows its type on the right. Tables, explanations and links sit alongside the cards, so the paper still reads like proper notes.</p>
+    <figure><img src="illustrations/03-editor-at-a-glance.png" alt="Annotated screenshot of the editor"></figure>
+    <div class="tip"><b>Tip:</b> papers open folded into an outline. Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>↓</kbd> to unfold everything, or click a heading's chevron to open just one section.</div>
+  </section>
+
+  <section id="add">
+    <h2><span class="n">04</span>Add Cards to Anki</h2>
+    <p class="lead">Press <b>Add Cards to Anki</b> or <kbd>Ctrl</kbd>+<kbd>G</kbd>. New lines become new cards. A line you've reworded updates its existing card, so your review history is kept. Delete a line and its card is removed.</p>
+    <figure><img src="screenshots/12-add-cards.png" alt="Add Cards to Anki result: 3 created, 1 updated"><figcaption>Lines without the little arrow beside their badge (line 31 here) haven't reached Anki yet.</figcaption></figure>
+  </section>
+
+  <section id="weak">
+    <h2><span class="n">05</span>Weak spots: see what you keep forgetting</h2>
+    <p class="lead">Anki Papers reads your review history. Cards you keep failing are highlighted in the paper with their lapse count, and leeches that Anki has suspended are marked <b>Leech</b>. Fix the card where you wrote it: split it, add an <code>&amp;&amp;</code> explanation or reword it, then press <kbd>Ctrl</kbd>+<kbd>G</kbd>.</p>
+    <figure><img src="screenshots/03-weak-spots.png" alt="Weak-spot and leech markers in the paper"><figcaption>"Paroxysmal nocturnal dyspnoea" is a leech (8 lapses). The CXR mnemonic card has 3 lapses. The counter at the bottom says 2 weak spots.</figcaption></figure>
+  </section>
+
+  <section id="sources">
+    <h2><span class="n">06</span>Your lecture beside your notes</h2>
+    <p class="lead">The paperclip opens <b>Sources</b>. Attach the lecture slides (PowerPoint, with speaker notes), a PDF chapter, a Word handout or a guideline web page. Select text on a slide to <b>Add to notes</b>, <b>Draft cards</b> from it, or <b>Ask</b> about it.</p>
+    <figure><img src="screenshots/05-sources.png" alt="Sources panel showing lecture slides beside the paper"></figure>
+    <div class="tip"><b>For a whole textbook:</b> right-click a folder and choose <b>Attach a book…</b>. The PDF is split into chapters by its bookmarks, and each chapter is matched to the paper that covers it.</div>
+  </section>
+
+  <section id="draft">
+    <h2><span class="n">07</span>Draft cards with AI</h2>
+    <p class="lead">Click into a line or select a passage, then press <b>Draft cards</b> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>). Suggested cards appear underneath, written in your syntax. Accept (✓), discard (✗) or redraft (↻) each one. Nothing reaches Anki until you accept it.</p>
+    <figure><img src="screenshots/04-draft-cards.png" alt="Four drafted cards under a line about sacubitril/valsartan"></figure>
+    <div class="tip"><b>Setup:</b> Settings → AI. Pick Claude, Gemini, DeepSeek or any OpenAI-compatible endpoint (including a local model), paste your API key and press Test connection. Turn AI off and every AI button disappears.</div>
+  </section>
+
+  <section id="ask">
+    <h2><span class="n">08</span>Ask about the paper</h2>
+    <p class="lead"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> opens a chat about the open paper. Chips choose what it reads: this paper, the open slide, the whole source, linked papers. Answers cite lines and slides as clickable chips. Turn on <b>Stick to my sources</b> to keep it to your own material, then insert an answer as an <code>&amp;&amp;</code> explanation or turn it into cards.</p>
+    <figure><img src="screenshots/06-ask.png" alt="Ask panel answering why the 36-hour washout is needed"></figure>
+  </section>
+
+  <section id="links">
+    <h2><span class="n">09</span>Link topics the way medicine is linked</h2>
+    <p class="lead">Highlight a phrase, right-click and choose <b>Create link…</b> to point it at any heading in another paper, e.g. from "rate control" in Atrial fibrillation to β-blockers in Heart-failure drugs. Double-click a link to follow it. The <b>Links</b> panel lists what cites the open paper, and the <b>Graph</b> shows how your whole library connects.</p>
+    <div class="two">
+      <figure><img src="screenshots/07-links-panel.png" alt="Links panel"><figcaption>Linked from / links out for "Heart-failure drugs".</figcaption></figure>
+      <figure><img src="screenshots/08b-graph-headers.png" alt="Link graph in Headers mode"><figcaption>Graph in Headers mode: which sections get cited.</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="occlusion">
+    <h2><span class="n">10</span>Image occlusion for anatomy</h2>
+    <p class="lead">Hover a diagram and click <b>Occlude</b>. Anki's built-in Image Occlusion editor opens with the picture loaded. Draw masks over the labels and press Add. A badge on the picture then counts its occlusion cards, and clicking it opens them for editing.</p>
+    <div class="two">
+      <figure><img src="screenshots/09-image-occlusion.png" alt="Occlude button on a heart diagram"><figcaption>Hover the picture: Occlude, top right.</figcaption></figure>
+      <figure><img src="screenshots/10-occlusion-badge.png" alt="Occlusion count badge on the diagram"><figcaption>The badge (3) counts the occlusion cards made from it.</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="search">
+    <h2><span class="n">11</span>Search every paper</h2>
+    <p class="lead">Each result is a line, shown with its heading trail, e.g. <i>Heart failure › Management of HFrEF · line 29</i>. Use quotes for exact phrases, <code>-word</code> to exclude, and <code>title:</code>, <code>folder:</code>, <code>deck:</code> or <code>tag:</code> to narrow a search.</p>
+    <figure><img src="screenshots/11-search.png" alt="Search results for angioedema across two papers"></figure>
+  </section>
+
+  <section id="home">
+    <h2><span class="n">12</span>Home: where you left off</h2>
+    <p class="lead">The home page shows a reminder of the syntax, your card totals by type, the papers you were working on and a calendar of the cards you've made.</p>
+    <figure><img src="screenshots/01-home.png" alt="Home page"></figure>
+  </section>
+
+  <footer>Anki Papers by Dr. Ahmed Benarab. Screenshots use a demo library of medical notes; the AI answers shown are sample responses.</footer>
+</main>
+</body>
+</html>

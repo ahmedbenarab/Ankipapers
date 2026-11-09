@@ -4,7 +4,7 @@
 
 # Anki Papers
 
-Write notes as **markdown papers** inside Anki. Mark the lines worth remembering and press Generate — those lines become **Basic**, **reversible**, and **cloze** cards in your collection, and pressing Generate again later updates the same cards rather than making new ones.
+Write notes as **markdown papers** inside Anki. Mark the lines worth remembering and press **Add Cards to Anki** — those lines become **Basic**, **reversible**, and **cloze** cards in your collection, and pressing it again later updates the same cards rather than making new ones.
 
 Papers **link to each other**: highlight a phrase, point it at a heading in another document, and follow it with a double-click. A **Links panel** shows what cites the open paper, and a **graph view** shows how the whole library connects.
 
@@ -43,7 +43,7 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 
 **UWorld question tags and flags on headings.**
 - **Question tags:** at the end of a heading, type `uw3252` and press Space or Return. It turns into a hidden `<!--uw:3252-->`, and at Generate every card under the heading (everything indented beneath it, nested headings included) is tagged `UWorldABIM::3252`. Add more the same way (`uw4410`) or several at once (`uw3252,4410`). Take an id off the heading and its tag comes off those cards at the next Generate; tags you added yourself in Anki are never touched. Searching `3252` finds the heading. See [Question tags on headings](#question-tags-on-headings).
-- **Your own prefix:** Settings → Question Tag Prefix sets it everywhere (`UWorldABIM` by default). Right-click a paper or folder → **Question tag prefix…** to use another one there, say `MKSAP`.
+- **Your own prefix:** Settings → Cards → Question Tag Prefix sets it everywhere (`UWorldABIM` by default). Right-click a paper or folder → **Question tag prefix…** to use another one there, say `MKSAP`.
 - **Flags:** type `flag:red` at the end of a heading (any Anki flag: red, orange, green, blue, pink, turquoise or purple, or 1–7; `flag:none` takes it off) and Generate flags every card under it. A flag you clear in Anki stays cleared, and once every card under a heading has been cleared there, the heading loses its flag too. See [Flags on headings](#flags-on-headings).
 - Both stay out of sight: they never show on the page, on cards, in breadcrumbs, the outline or the PDF. Click into the heading to see or edit them.
 
@@ -55,26 +55,30 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 - **Suspended cards:** a card line whose cards are suspended in Anki fades and gets a ⓢ; hover it for what it means. A heading whose cards are all suspended says **ⓢ All suspended** at its right edge (or "3 of 8 suspended" when only some are).
 - **Card counts:** every H1, H2 and H3 shows the number of cards under it at its right edge; hover the number for "This section has 29 cards."
 - **Outline:** a dot in each flagged heading's color, left of its name (weak-spot dots stay on the right), and fully suspended topics faded.
-- **Settings:** **Card Counts** and **Suspended Cards** turn those parts off, and **Suspended Card Opacity** sets how faded a suspended line looks (85% to start).
+- **Settings → Editor:** **Card Counts** and **Suspended Cards** turn those parts off, and **Suspended Card Opacity** sets how faded a suspended line looks (85% to start).
 - **Always current:** suspend, unsuspend or unflag something in Anki's Browser, come back to Anki Papers, and the page catches up straight away — no Generate needed.
 
 **Every line shows its own card's state.** The editor now finds each line's Anki note by the line's own hidden card name. Before, it went by the line numbers saved at the last Generate, so after adding or removing a line, the lines below could show their neighbor's suspension, flag or weak-spot marker, and open the neighbor's note in Anki.
 
-**Card type badges can be hidden.** Settings → **Card Type Badges** turns off the Basic, Reversible and Cloze bubbles at the right edge of card lines, for a cleaner page. A weak-spot pill and the open-in-Anki button stay where they are.
+**Card type badges can be hidden.** Settings → Editor → **Card Type Badges** turns off the Basic, Reversible and Cloze bubbles at the right edge of card lines, for a cleaner page. A weak-spot pill and the open-in-Anki button stay where they are.
 
 **Enter at the start of a card line keeps its indent.** The blank line it leaves above now sits at the line's own indentation instead of jumping to the left margin, level with the H1s, and Tab works on it again. The card's hidden name moves down with its text, so the card stays attached to the right line.
 
+**The guide has a window of its own.** Press the **?** button at the top of the sidebar (beside Home and Settings) to open it: topics down the left, the chosen one on the right, like Settings. It reopens on the topic you read last. The home page keeps a short **Start here** under the greeting with the four ways to mark a line, and an **Open the guide** link.
+
+**Generate Cards is now Add Cards to Anki.** The button that turns your card lines into Anki cards says what it does. It works exactly as before: it saves the paper, then creates, updates and removes that paper's cards. `Ctrl+G` still runs it, and a folder's right-click menu now reads **Add all cards in folder to Anki**.
+
 **Image occlusion from your pictures.**
-- **Create Image Occlusion Cards:** right-click a picture in a paper and choose **Create Image Occlusion Cards**. Anki's Add window opens on its built-in **Image Occlusion** note type, with the picture already in the mask editor and the deck set to the paper's deck. Draw your masks and press Add. See [Image occlusion](#image-occlusion).
+- **Create Image Occlusion Cards:** hover over a picture in a paper and click **Occlude** in its top-right corner, or right-click it and choose **Create Image Occlusion Cards**. Anki's Add window opens on its built-in **Image Occlusion** note type, with the picture already in the mask editor and the deck set to the paper's deck. Draw your masks and press Add. See [Image occlusion](#image-occlusion).
 - **A count on the picture:** once a picture has occlusion cards, a small badge in its lower-right corner shows how many. It updates by itself when you add, edit or delete them in Anki.
 - **Click the badge to edit:** it opens those notes in Anki's Browser with the masks showing. Right-click → **Edit Image Occlusion Cards** does the same.
 
 **Draft cards with AI, sources beside your paper, and Ask.**
-- **Draft cards:** select some lines (or click into one) and press **Draft cards** on the toolbar, choose it from the right-click menu, or press `Ctrl+Shift+D`. Card lines written in your syntax (`>>`, `<>`, `{{c1::…}}`) appear under the passage as dashed drafts. They aren't saved and Generate skips them until you accept one (✓), which turns it into an ordinary line. Click a draft to edit it (Enter saves and accepts, Escape stops editing), ✗ discards it, ↻ redoes just that card, and Accept all / Discard all / Redraft work on the whole group. The bottom bar counts drafts apart from your cards.
+- **Draft cards:** select some lines (or click into one) and press **Draft cards** on the toolbar, choose it from the right-click menu, or press `Ctrl+Shift+D`. Card lines written in your syntax (`>>`, `<>`, `{{c1::…}}`) appear under the passage as dashed drafts. They aren't saved and Add Cards to Anki skips them until you accept one (✓), which turns it into an ordinary line. Click a draft to edit it (Enter saves and accepts, Escape stops editing), ✗ discards it, ↻ redoes just that card, and Accept all / Discard all / Redraft work on the whole group. The bottom bar counts drafts apart from your cards.
 - **Sources:** the paperclip on the toolbar opens the Sources panel. Attach a PDF, Word, PowerPoint, HTML or text file, or a web page, to the open paper; files are copied into your Anki Papers folder and stay with the paper. PowerPoint and Word open in a reader view (slides with their speaker notes), and web pages are saved as a copy you can read offline. Select text in a source to **Add to notes**, **Draft cards** or **Ask**; lines added this way remember where they came from, and **Go to source** (right-click) reopens the page with the passage highlighted.
 - **Folder sources (books and courses):** right-click a folder for **Attach a book…** (a PDF), **Attach a web source…** (a Microsoft Learn course or learning path, a docs site, or any page that links to its chapters) or **Attach a file…**. Every paper in the folder sees the folder's sources, labeled "from <folder>". A book or course is split into chapters (from the PDF's bookmarks, or the course's modules), each matched to the paper that covers it; that paper then opens the source at its own chapter. The chapter bar above the paper (previous / next chapter) shows when you turn it on; see below. Name a new paper after a chapter and it links itself; turn on **Settings → Chapters waiting for a paper** to also see the chapters without a paper, faded in the sidebar, and create one with a click. A course's learning paths can stay as headings or become sub-folders.
 - **Ask:** the speech-bubble button (or `Ctrl+Shift+A`) opens a chat about the open paper. Chips choose what it reads: this paper, the source open in the Sources panel, the whole chapter, the papers this one links to. Answers cite `line N` and source pages as chips that jump there; "Stick to my sources" makes it say when your material doesn't cover something. Any answer can be inserted as an `&&` supplement or sent to Draft cards. Nothing goes into Anki directly.
-- **Settings → AI:** choose Claude, Gemini, or any OpenAI-compatible endpoint (OpenAI, OpenRouter, or a local model in Ollama or LM Studio), paste your API key and press **Test connection**. On a Mac the key is kept in the macOS Keychain, never in the add-on's settings files. Anki Papers' own Python calls the provider over HTTPS; there's no server in between, and nothing to install. Card rules, the card types it may write, and the language are yours to set. Turn AI features off and every AI button disappears; sources keep working without AI.
+- **Settings → AI:** choose Claude, Gemini, DeepSeek, or any OpenAI-compatible endpoint (OpenAI, OpenRouter, or a local model in Ollama or LM Studio), paste your API key and press **Test connection**. On a Mac the key is kept in the macOS Keychain, never in the add-on's settings files. Anki Papers' own Python calls the provider over HTTPS; there's no server in between, and nothing to install. Card rules, the card types it may write, and the language are yours to set. Turn AI features off and every AI button disappears; sources keep working without AI.
 - **Folders can be ten levels deep** (it was three).
 - **Learning paths in sub-folders:** when a course's learning paths have their own sub-folders (say `AI-901/1. AI Concepts` and `AI-901/2. AI Apps & Agents`), each path is matched to its sub-folder by name or by where its papers already are. With **Settings → Chapters waiting for a paper** turned on, modules that don't have a paper yet show faded inside their own learning path's folder, in course order, and a paper made for one is created there. You can change which folder a path uses when you attach the course, or later from the folder's right-click menu → **Learning paths and sources…**.
 - **Books show their whole outline:** **Attach a book…** lists every bookmark in the PDF (parts, the chapters inside them and their sections), indented, with printed page numbers. Choose the paper for each one; papers whose names match are filled in, and anything set to "Not a chapter" is left out.
@@ -234,7 +238,7 @@ Where the line sits is what decides its meaning. Indented under a card, it belon
 
 The picture button on the toolbar inserts an image at the cursor, and pasting an image from the clipboard copies the file into your Anki media folder for you. An `![](…)` you type by hand has to point at a file already in that folder, or the card shows a broken image.
 
-Editing any of this on an existing card just works: add, swap or remove a picture, or reword a `&&` line, press Generate, and the card is updated in place with its review history intact.
+Editing any of this on an existing card just works: add, swap or remove a picture, or reword a `&&` line, press Add Cards to Anki, and the card is updated in place with its review history intact.
 
 ### Tables
 
@@ -263,7 +267,7 @@ It is an HTML comment, so it stays invisible wherever the table is rendered, and
 
 `[[tag]]` anywhere on a card line puts an Anki tag on that card, written as `AnkiPapers::tag`. Everything you'd normally use tags for — searching, building a filtered deck the week before an exam — works as usual.
 
-`[[NH]]` is short for **no heading**. By default every card shows the headings it came from (see [Context on your cards](#context-on-your-cards)); add `[[NH]]` when that context would give the answer away. The card is then written with no heading at all, on the question and the answer side alike. Adding or removing `[[NH]]` on a line that already has a card takes effect on the next Generate.
+`[[NH]]` is short for **no heading**. By default every card shows the headings it came from (see [Context on your cards](#context-on-your-cards)); add `[[NH]]` when that context would give the answer away. The card is then written with no heading at all, on the question and the answer side alike. Adding or removing `[[NH]]` on a line that already has a card takes effect the next time you press Add Cards to Anki.
 
 ```markdown
 ## Hypertrophic cardiomyopathy
@@ -318,13 +322,13 @@ You flag cards in Anki as well, so Generate follows a few rules to keep the two 
 - **Taking the flag off the heading** clears it from the cards that still show it. A different flag you set on a card in Anki stays.
 - Changing a heading's flag in the paper re-flags all of its cards, including any you had flagged differently in Anki.
 
-In the editor, the line beside the line numbers takes the flag's color from the heading down through everything under it, so a red topic reads red from top to bottom. A card flagged in Anki on its own, with a flag the heading doesn't account for, shows a small flag in that color beside its badge. Suspended cards are shown too: the line fades and gets a ⓢ, and the heading above says "All suspended" when every card under it is (Settings → Suspended Cards and Suspended Card Opacity; Settings → Card Counts for the count on each heading).
+In the editor, the line beside the line numbers takes the flag's color from the heading down through everything under it, so a red topic reads red from top to bottom. A card flagged in Anki on its own, with a flag the heading doesn't account for, shows a small flag in that color beside its badge. Suspended cards are shown too: the line fades and gets a ⓢ, and the heading above says "All suspended" when every card under it is (Settings → Editor → Suspended Cards and Suspended Card Opacity; Settings → Editor → Card Counts for the count on each heading).
 
 ### Image occlusion
 
 Hide parts of a picture and get asked what's underneath, using Anki's own **Image Occlusion** (built into Anki 23.10 and later; no other add-on needed).
 
-1. **Right-click a picture** in a paper and choose **Create Image Occlusion Cards**. Anki's Add window opens on the Image Occlusion note type, with the picture loaded in the mask editor and the deck set to the paper's deck.
+1. **Hover over a picture** in a paper and click **Occlude** in its top-right corner (or right-click it and choose **Create Image Occlusion Cards**). Anki's Add window opens on the Image Occlusion note type, with the picture loaded in the mask editor and the deck set to the paper's deck.
 2. **Draw a mask** over each thing to hide, then press **Add**. Each mask (or group of masks) becomes one card.
 3. **Back in the paper**, the picture shows a small badge in its lower-right corner with the number of occlusion cards made from it. It updates as soon as you add, edit or delete them in Anki.
 4. **Click the badge** to open those notes in Anki's Browser, where the mask editor lets you move, add or remove masks. Right-click → **Edit Image Occlusion Cards** does the same.
@@ -333,7 +337,7 @@ Good to know:
 
 - It works on pictures on a line of their own (`![caption](picture.png)`) that are stored in your Anki media folder. A picture inside a sentence, or a web image, doesn't get the menu item.
 - If the Add window already holds a note you haven't added, finish or clear it first; Anki Papers won't throw it away.
-- The occlusion notes are ordinary Anki notes. Generate never touches them, and deleting the picture's line from the paper leaves them in your collection.
+- The occlusion notes are ordinary Anki notes. Add Cards to Anki never touches them, and deleting the picture's line from the paper leaves them in your collection.
 - The badge counts occlusion notes whose Image field shows that picture, so you can make several notes from one picture and they all count.
 
 ### Images, formatting, and maths
@@ -413,7 +417,7 @@ A link stores a hidden, stable anchor on the target line rather than a line numb
 
 ### Links inside flashcards
 
-A link inside a card line renders on the Anki note as styled text — the phrase, never the raw markdown. Links are not clickable inside Anki itself. Adding a link changes the line, so that card counts as edited and will update on the next Generate.
+A link inside a card line renders on the Anki note as styled text — the phrase, never the raw markdown. Links are not clickable inside Anki itself. Adding a link changes the line, so that card counts as edited and will update the next time you press Add Cards to Anki.
 
 ---
 
@@ -477,14 +481,14 @@ Every result is a place, not an excerpt: one row per matching line, reading `Doc
 
 ## Saving and generating
 
-- **Save** (`Ctrl+S`) writes the open paper. While it runs, both toolbar buttons gray out so a generate can't start mid-save.
-- **Generate Cards** (`Ctrl+G`) saves first, then creates, updates, and removes Anki notes for that paper.
+- **Save** (`Ctrl+S`) writes the open paper. While it runs, both toolbar buttons gray out so adding cards can't start mid-save.
+- **Add Cards to Anki** (`Ctrl+G`, called Generate Cards before) saves first, then creates, updates, and removes Anki notes for that paper.
 - **Autosave** runs on a timer (interval configurable in Settings).
-- **Closing the window** waits for any in-flight save or generate to finish, and asks whether to keep waiting if it is slow.
+- **Closing the window** waits for any in-flight save or card adding to finish, and asks whether to keep waiting if it is slow.
 
 If a save fails, the app says so rather than reporting success.
 
-### What Generate actually does
+### What Add Cards to Anki actually does
 
 For each card line in the document:
 
@@ -499,7 +503,7 @@ Changes that do not touch the card's own line — a reworded `&&` supplement, a 
 
 ### When a card was edited in Anki instead
 
-If you edit a generated note in Anki's own browser and then Generate, Anki Papers notices the note no longer matches the paper. Settings decides what happens: **preserve** leaves Anki's version alone, **overwrite** pushes the paper's text back over it, and **abort** stops the whole Generate and lists the conflicts before anything changes.
+If you edit one of these notes in Anki's own browser and then press Add Cards to Anki, Anki Papers notices the note no longer matches the paper. Settings decides what happens: **preserve** leaves Anki's version alone, **overwrite** pushes the paper's text back over it, and **abort** stops before anything is added and lists the conflicts before anything changes.
 
 ---
 
@@ -513,7 +517,7 @@ Every paper is two files under your Anki profile folder:
 ```
 
 - The **`.md`** is the document and nothing else, so it stays pleasant to read, diff, and keep in git.
-- The **`.ap.json`** beside it holds what markdown can't: the deck, tags, the true unaltered title and folder path, and the map from each line to its Anki note. That map is what stops Generate from destroying cards.
+- The **`.ap.json`** beside it holds what markdown can't: the deck, tags, the true unaltered title and folder path, and the map from each line to its Anki note. That map is what stops Add Cards to Anki from destroying cards.
 
 Folders in the sidebar are **real directories** on disk. Making, renaming, moving, or deleting a folder in the app does the same on disk.
 
@@ -565,7 +569,7 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 |---|---|
 | `Ctrl+Shift+P` | Open Anki Papers (from Anki's main window) |
 | `Ctrl+S` | Save the open paper |
-| `Ctrl+G` | Generate cards |
+| `Ctrl+G` | Add cards to Anki |
 | `Ctrl+Shift+E` | Toggle Editor / Source view |
 | `Ctrl+Shift+↓` | Unfold every collapsed section in the document |
 | `Ctrl+Shift+↑` | Fold every section back up to the document's default outline |
@@ -601,7 +605,7 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 | `auto_save_interval_seconds` | How often autosave runs |
 | `font_family` / `font_size` | Editor typeface |
 | `editor_theme` | `dark`, `light`, or `auto` |
-| `show_card_indicators` | The Basic / Reversible / Cloze badges at the right edge of each card line (Settings → Card Type Badges; on by default) |
+| `show_card_indicators` | The Basic / Reversible / Cloze badges at the right edge of each card line (Settings → Editor → Card Type Badges; on by default) |
 | `color_scheme` | `carolina` (default), `purple`, `mono` or `crimson`: colors the app and the Basic card style |
 | `show_line_numbers` | Line numbers down the left of the editor and Source view (on by default) |
 | `show_chapter_bar` | `false` (default): the chapter bar shows only on papers where the toolbar's book button turned it on; `true`: on every paper that is a chapter of its folder's book or course |
@@ -615,7 +619,7 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 | `suspended_card_opacity` | How visible a suspended line stays, 30–100 (85 by default) |
 | `qbank_tag_prefix` | The tag group for [question tags](#question-tags-on-headings): `UWorldABIM` (default) gives `UWorldABIM::3252`. A paper or folder can set its own from its right-click menu |
 | `ai_enabled` | Show the AI features (Draft cards, Ask). On by default |
-| `ai_provider` | `anthropic` (Claude), `gemini`, or `openai` (any OpenAI-compatible endpoint) |
+| `ai_provider` | `anthropic` (Claude), `gemini`, `deepseek`, or `openai` (any OpenAI-compatible endpoint) |
 | `ai_model_<provider>` | The model for that provider, e.g. `ai_model_anthropic` |
 | `ai_base_url` | OpenAI-compatible endpoint address (empty means OpenAI) |
 | `ai_card_types` / `ai_card_rules` / `ai_language` | What Draft cards may write, the rules sent with every draft, and the language of cards and answers |
@@ -640,13 +644,13 @@ The add-on loads the **built** files in `web/`, so source edits have no effect u
 
 ### Building the add-on package
 
-Creates `Ankipapers.ankiaddon` for sharing or "Install from file".
+Creates `builds/Ankipapers-<version>.ankiaddon` for sharing or "Install from file", and `builds/Ankipapers-<version>-ankiweb.zip` (the same contents) to upload to AnkiWeb. `<version>` is `human_version` from `manifest.json`, so each release keeps its own files in `builds/`. Rebuild the web UI first if you changed anything in `web_src/`.
 
 ```powershell
 .\_build.ps1          # Windows PowerShell
 ```
 
-Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `core/`, `gui/`, and `web/` — not `web_src/`, `user_files/`, or `node_modules/`.
+The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `LICENSE`, `AnkiPapers logo.png`, `core/`, `gui/`, and `web/` — not `web_src/`, `user_files/`, `tests/`, `meta.json`, or `__pycache__/`. Paths inside the zip use forward slashes so it installs on macOS and Linux too.
 
 ---
 
@@ -677,7 +681,7 @@ Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manife
 | `user_files/` | Local cache/fallback only (gitignored) |
 | `tests/` | Python tests — run `python3 -m unittest discover -s tests` |
 | `gui/text_replacements.py` | Reads your macOS Text Replacements for the editor |
-| `core/ai.py` | AI providers (Claude, Gemini, OpenAI-compatible), Keychain key storage, background jobs, draft parsing |
+| `core/ai.py` | AI providers (Claude, Gemini, DeepSeek, OpenAI-compatible), Keychain key storage, background jobs, draft parsing |
 | `core/sources.py` | Attached files and web sources, the chapter map, Word/PowerPoint/HTML reader views, web snapshots |
 | `gui/ai_sources.py` | Bridge commands for AI and sources |
 | `gui/occlusion.py` | Image occlusion: opens Anki's Add window on a picture, counts its cards, opens them in the Browser |

@@ -1,8 +1,8 @@
 """
 AI provider layer for Anki Papers.
 
-Talks to Claude (Anthropic), Gemini (Google AI Studio) or any OpenAI-compatible
-endpoint (OpenAI, OpenRouter, Ollama, LM Studio...) over plain HTTPS with the
+Talks to Claude (Anthropic), Gemini (Google AI Studio), DeepSeek or any
+OpenAI-compatible endpoint (OpenAI, OpenRouter, Ollama, LM Studio...) over plain HTTPS with the
 standard library -- no SDKs, nothing to install into Anki's Python.
 
 Requests run on a background thread (JobManager) and the web UI polls for the
@@ -31,16 +31,20 @@ import urllib.request
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-PROVIDERS = ("anthropic", "gemini", "openai")
+PROVIDERS = ("anthropic", "gemini", "deepseek", "openai")
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1"
 ANTHROPIC_VERSION = "2023-06-01"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_OPENAI_BASE = "https://api.openai.com/v1"
+# DeepSeek speaks the OpenAI chat API, so it runs through that code path with
+# its own address filled in; only the key is the user's to supply.
+DEEPSEEK_URL = "https://api.deepseek.com"
 
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-5-5",
     "gemini": "",
+    "deepseek": "deepseek-chat",
     "openai": "",
 }
 
@@ -162,9 +166,10 @@ def list_models(provider: str, key: str, base_url: str = "") -> List[str]:
             if "generateContent" in (m.get("supportedGenerationMethods") or []):
                 out.append((m.get("name") or "").replace("models/", ""))
         return [m for m in out if m]
-    if provider == "openai":
+    if provider in ("openai", "deepseek"):
         headers = {"Authorization": f"Bearer {key}"} if key else {}
-        data = _get_json(f"{_openai_base(base_url)}/models", headers)
+        base = DEEPSEEK_URL if provider == "deepseek" else _openai_base(base_url)
+        data = _get_json(f"{base}/models", headers)
         return sorted(m.get("id") for m in data.get("data", []) if m.get("id"))
     raise AIError(f"Unknown provider {provider!r}")
 
@@ -172,7 +177,10 @@ def list_models(provider: str, key: str, base_url: str = "") -> List[str]:
 # Room for the answer. On current Claude models thinking is on by default and
 # counts against max_tokens, so a small cap can be used up before the answer
 # starts; we stream, and only what is generated is billed.
-DEFAULT_MAX_TOKENS = {"anthropic": 16000, "gemini": 8192, "openai": 4096}
+DEFAULT_MAX_TOKENS = {"anthropic": 16000, "gemini": 8192, "deepseek": 8192, "openai": 4096}
+# deepseek-reasoner counts its reasoning against max_tokens, like thinking on
+# Claude, so it needs far more room than the answer alone.
+DEEPSEEK_REASONER_MAX_TOKENS = 32768
 
 
 def complete(provider: str, key: str, model: str, system: str, messages: List[Dict[str, str]],
@@ -193,6 +201,8 @@ def complete(provider: str, key: str, model: str, system: str, messages: List[Di
         raise AIError("Choose a model in Settings → AI first.")
     if max_tokens is None:
         max_tokens = DEFAULT_MAX_TOKENS.get(provider, 4096)
+        if provider == "deepseek" and "reasoner" in model:
+            max_tokens = DEEPSEEK_REASONER_MAX_TOKENS
     parts: List[str] = []
     usage = {"input": 0, "output": 0}
 
@@ -253,8 +263,11 @@ def complete(provider: str, key: str, model: str, system: str, messages: List[Di
                         usage["output"] = um.get("candidatesTokenCount", usage["output"])
 
         _with_fallbacks(run_gemini, body, [("temperature", lambda b: b["generationConfig"].pop("temperature", None))])
-    elif provider == "openai":
+    elif provider in ("openai", "deepseek"):
+        if provider == "deepseek" and not key:
+            raise AIError("Add your DeepSeek API key in Settings → AI.")
         headers = {"Authorization": f"Bearer {key}"} if key else {}
+        base = DEEPSEEK_URL if provider == "deepseek" else _openai_base(base_url)
         body = {"model": model, "stream": True, "max_tokens": max_tokens,
                 "stream_options": {"include_usage": True},
                 "messages": [{"role": "system", "content": system}] +
@@ -263,9 +276,11 @@ def complete(provider: str, key: str, model: str, system: str, messages: List[Di
             body["temperature"] = temperature
 
         def run_openai(b):
-            with _request("POST", f"{_openai_base(base_url)}/chat/completions", headers, b, 300) as r:
+            with _request("POST", f"{base}/chat/completions", headers, b, 300) as r:
                 for ev in _iter_sse(r, canceled):
                     for ch in ev.get("choices") or []:
+                        # Only the answer: deepseek-reasoner streams its
+                        # reasoning separately, as reasoning_content.
                         emit((ch.get("delta") or {}).get("content") or "")
                     u = ev.get("usage") or {}
                     if u:

@@ -939,6 +939,97 @@ def _is_paper_side_change(existing_ref, derived: str, diff: set) -> bool:
     return "body" not in diff
 
 
+_NOTE_TYPE_FOR_CARD = {
+    "basic": "AnkiPapers Basic",
+    "reversible": "AnkiPapers Reversible",
+    "cloze": "AnkiPapers Cloze",
+}
+
+
+def _note_fits_card(note, card: ParsedCard) -> bool:
+    """True when the note is of the type the card's line now asks for.
+
+    A line keeps its anchor when its syntax changes, so ">>" rewritten as a
+    cloze still finds its old Basic note. The two types lay out their fields
+    differently: writing a cloze into a Basic note put the breadcrumb on the
+    back and the source reference where the context goes, and turning ">>"
+    into "<>" never made the reverse card. A card whose type changed needs a
+    note of the new type instead.
+    """
+    want = _NOTE_TYPE_FOR_CARD.get(card.card_type)
+    try:
+        nt = note.note_type() if hasattr(note, "note_type") else note.model()
+        have = (nt or {}).get("name")
+    except Exception:
+        return True
+    return not want or not have or have == want
+
+
+def paper_title_tag(paper: Paper) -> str:
+    """The tag every note of a paper carries, named after the paper."""
+    return f"AnkiPapers::{(paper.title or '').replace(' ', '_')}"
+
+
+def _source_ref(card: ParsedCard, paper: Paper) -> str:
+    """The Source field: "paper_id:line", which the card's jump button opens."""
+    return f"{paper.id}:{card.line_index}"
+
+
+def current_line_for_note(paper: Paper, note_id: Optional[int]) -> Optional[int]:
+    """The line a note's card is on in the paper now, or None if unknown.
+
+    Found by the anchor Generate stamped on the line, which moves with it, so
+    the answer is right even when lines above were added or removed after
+    the note's Source field was last written.
+    """
+    if paper is None or not note_id:
+        return None
+    ref = next((r for r in paper.card_refs if r.anki_note_id == note_id), None)
+    if ref is None:
+        return None
+    if ref.block_id:
+        marker = f"<!--ap:{ref.block_id}-->".lower()
+        for i, line in enumerate((paper.content or "").split("\n")):
+            if marker in line.lower():
+                return i
+    return ref.line_index
+
+
+def _refresh_bookkeeping(col, note, card: ParsedCard, paper: Paper,
+                         title_tag: str, old_title_tag: Optional[str]) -> bool:
+    """Bring the parts of a note the add-on owns up to date. True if written.
+
+    Source holds the card's line number, and lines move whenever something
+    above them is added or removed; the paper's title tag changes when the
+    paper is renamed. Neither used to be touched unless the card's own text
+    changed, so the review card's jump button opened the wrong line and a
+    renamed paper's cards kept its old name. Neither is the card's content,
+    so this is not a conflict with an edit made in Anki and needs no policy.
+    """
+    changed = False
+    idx = 2 if card.card_type == "cloze" else 3
+    source = _source_ref(card, paper)
+    if len(note.fields) > idx and note.fields[idx] != source:
+        note.fields[idx] = source
+        changed = True
+
+    tags = list(note.tags)
+    if old_title_tag and old_title_tag.lower() != title_tag.lower():
+        tags = [t for t in tags if t.lower() != old_title_tag.lower()]
+    if not any(t.lower() == title_tag.lower() for t in tags):
+        tags.append(title_tag)
+    if tags != list(note.tags):
+        note.tags = tags
+        changed = True
+
+    if changed:
+        if hasattr(col, "update_note"):
+            col.update_note(note)
+        else:
+            note.flush()
+    return changed
+
+
 def _ref_is_claimed(ref: Optional[CardReference], claimed_note_ids) -> bool:
     """True when this Anki note has already been taken by an earlier card."""
     if ref is None or claimed_note_ids is None:
@@ -1381,7 +1472,7 @@ def _update_note_from_card(col, note, card: ParsedCard, paper: Paper, deck_id: i
     """Apply parsed card fields to an existing note. Returns True on success."""
     try:
         context = _card_context(card, paper)
-        source_ref = f"{paper.id}:{card.line_index}"
+        source_ref = _source_ref(card, paper)
         supp = _md_to_html(getattr(card, "supplement", ""))
 
         if card.card_type == "basic":
@@ -1532,6 +1623,12 @@ def generate_cards(
     claimed_note_ids = set()
     used_block_ids = set()
 
+    # The title tag this paper's notes were last given, so a rename can take
+    # it off them. None for a paper generated before this was recorded: its
+    # notes gain the current tag, and the old one stays.
+    title_tag = paper_title_tag(paper)
+    old_title_tag = getattr(paper, "title_tag", None)
+
     for card in cards:
         existing_ref = _resolve_existing_ref_for_card(
             card, refs_by_block_id, existing_by_hash, claimed_note_ids
@@ -1542,6 +1639,11 @@ def generate_cards(
             try:
                 note = col.get_note(existing_ref.anki_note_id)
             except Exception:
+                note = None
+            # The line now asks for a different kind of card: make a note of
+            # that type below. The old note is no longer claimed, so it is
+            # removed with the others this paper no longer has.
+            if note is not None and not _note_fits_card(note, card):
                 note = None
             if note is not None:
                 # Question tags follow the headings above the card, which the
@@ -1596,7 +1698,14 @@ def generate_cards(
                         # already matches the paper, so the current hash is
                         # genuinely what it holds.
                         written = True
-                if qbank_changed and not saved and _save_note(col, note):
+                # Not counted as "updated": the card itself is unchanged.
+                # A write here also saves the question tags set above.
+                refreshed = False
+                try:
+                    refreshed = _refresh_bookkeeping(col, note, card, paper, title_tag, old_title_tag)
+                except Exception as e:
+                    print(f"[Anki Papers] Error refreshing note bookkeeping: {e}")
+                if qbank_changed and not saved and not refreshed and _save_note(col, note):
                     updated += 1
                 flag_applied = _sync_flag(col, note.id, card.flag,
                                           getattr(existing_ref, "flag_applied", 0) or 0, report)
@@ -1672,6 +1781,7 @@ def generate_cards(
         paper.content = inject_stable_block_ids(paper.content, pending_anchors)
 
     paper.card_refs = new_card_refs
+    paper.title_tag = title_tag
     return created, updated, deleted
 
 
@@ -1744,7 +1854,7 @@ def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int,
     """Create a single Anki note from a ParsedCard."""
     try:
         context = _card_context(card, paper)
-        source_ref = f"{paper.id}:{card.line_index}"
+        source_ref = _source_ref(card, paper)
         supp = _md_to_html(getattr(card, "supplement", ""))
 
         # Build tags
@@ -1752,8 +1862,7 @@ def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int,
         if paper.tags:
             tags.extend(paper.tags)
         # Add paper title as tag (sanitized)
-        paper_tag = f"AnkiPapers::{paper.title.replace(' ', '_')}"
-        tags.append(paper_tag)
+        tags.append(paper_title_tag(paper))
         
         # Apply line-specific [[tags]]
         if hasattr(card, 'inline_tags') and card.inline_tags:

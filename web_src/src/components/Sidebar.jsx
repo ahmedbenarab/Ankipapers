@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
-import { FilePlus, FolderPlus, FileText, Folder, FolderOpen, ChevronRight, ChevronDown, Trash2, Pencil, ExternalLink, Home, X, Settings, CornerUpLeft, Search, PanelLeftClose, PanelLeftOpen, Zap, ListTree, BookOpen, Globe, Paperclip, Share, Tag } from 'lucide-react'
+import { FilePlus, FolderPlus, FileText, Folder, FolderOpen, ChevronRight, ChevronDown, Trash2, Pencil, ExternalLink, Home, X, Settings, CircleHelp, CornerUpLeft, Search, PanelLeftClose, PanelLeftOpen, CopyPlus, ListTree, BookOpen, Globe, Paperclip, Share, Tag } from 'lucide-react'
 import OutlinePanel from './OutlinePanel'
 
 // Hovering the rail slides the tree out; both numbers are deliberate. 260ms in
@@ -60,7 +60,7 @@ function SearchMatchBadges({ result }) {
   )
 }
 
-export default function Sidebar({ papers, folders, activePaperId, onSelectPaper, onGoToLine, onCreatePaper, onDeletePaper, onCreateFolder, onMovePaper, onMoveFolder, onSelectFolder, selectedFolder, onGoHome, onOpenSettings, onDeleteFolder, onRenameFolder, onGenerateFolder, onShareFolder, onQbankPrefix, collapsed = false, width = 260, onToggleCollapse, outline = null, outlineTitle = '', outlineCurrentLine = 0, onJumpToHeading, currentPaper = null, folderSources = {}, onFolderSource, onCreateWaitingChapter, showWaiting = false }) {
+export default function Sidebar({ papers, folders, activePaperId, onSelectPaper, onGoToLine, onCreatePaper, onDeletePaper, onCreateFolder, onMovePaper, onMoveFolder, onSelectFolder, selectedFolder, onGoHome, onOpenSettings, onOpenGuide, onDeleteFolder, onRenameFolder, onGenerateFolder, onShareFolder, onQbankPrefix, collapsed = false, width = 260, onToggleCollapse, outline = null, outlineTitle = '', outlineCurrentLine = 0, onJumpToHeading, currentPaper = null, folderSources = {}, onFolderSource, onCreateWaitingChapter, showWaiting = false }) {
   // Papers (the folder tree) or Outline (the open paper's headings).
   const [tab, setTab] = useState('papers')
   const [peeking, setPeeking] = useState(false)
@@ -481,6 +481,9 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
         <FolderPlus size={18} />
       </button>
       <div className="sidebar-rail-spacer" />
+      <button type="button" className="sidebar-rail-btn" onClick={onOpenGuide} title="Guide">
+        <CircleHelp size={18} />
+      </button>
       <button type="button" className="sidebar-rail-btn" onClick={onOpenSettings}
               title="Settings (Ctrl+,)">
         <Settings size={18} />
@@ -505,6 +508,9 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
             </button>
             <button type="button" className="sidebar-home-btn" onClick={onOpenSettings} title="Settings (Ctrl+,)">
               <Settings size={22} strokeWidth={1.75} />
+            </button>
+            <button type="button" className="sidebar-home-btn" onClick={onOpenGuide} title="Guide">
+              <CircleHelp size={22} strokeWidth={1.75} />
             </button>
             <button type="button" className="sidebar-home-btn" onClick={onToggleCollapse}
                     title="Hide sidebar (Ctrl+\)">
@@ -773,8 +779,8 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
                       setContextMenu(null)
                       onGenerateFolder(f.path)
                     }}>
-                      <Zap size={13} />
-                      <span>Generate all cards in folder</span>
+                      <CopyPlus size={13} />
+                      <span>Add all cards in folder to Anki</span>
                     </div>
                     {onShareFolder && (
                       <div className="context-item" title="Every paper in it and its subfolders, with their pictures, as one .zip"

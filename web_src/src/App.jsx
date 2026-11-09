@@ -26,6 +26,7 @@ import GraphView from './components/GraphView'
 import ErrorBoundary from './components/ErrorBoundary'
 import Toast from './components/Toast'
 import Settings from './components/Settings'
+import GuideWindow from './components/GuideWindow'
 import GenerateConflictModal from './components/GenerateConflictModal'
 import FolderGenerateDialog from './components/FolderGenerateDialog'
 import TableDialog from './components/TableDialog'
@@ -144,6 +145,9 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [cardCounts, setCardCounts] = useState({ basic: 0, reversible: 0, cloze: 0 })
   const [showSettings, setShowSettings] = useState(false)
+  // The guide's window, and the topic it reopens on.
+  const [showGuide, setShowGuide] = useState(false)
+  const [guideTopic, setGuideTopic] = useState('start')
   const [settings, setSettings] = useState({})
   const [selectedFolder, setSelectedFolder] = useState(null)
   const [mediaDir, setMediaDir] = useState('')
@@ -1137,14 +1141,14 @@ export default function App() {
     try {
       const saved = await persistPaper(await reconcileBacklinks(paper))
       if (saved && saved.error) {
-        showToast(`Save failed, not generating: ${saved.error}`, 'error')
+        showToast(`Save failed, so no cards were added: ${saved.error}`, 'error')
         return
       }
       const result = await generateCards(paper.id, policy)
       await refreshPapers()
       if (result.error === 'anki_edit_conflicts') {
         showToast(
-          `Generate stopped: ${result.conflicts?.length ?? 0} card(s) edited in Anki (Settings: abort on conflict)`,
+          `Cards not added: ${result.conflicts?.length ?? 0} card(s) edited in Anki (Settings: stop on conflict)`,
           'error'
         )
         return
@@ -1171,7 +1175,7 @@ export default function App() {
       }
       showToast(parts.join(', '), 'success')
     } catch (e) {
-      showToast(`Generate failed: ${e?.message || e}`, 'error')
+      showToast(`Adding cards to Anki failed: ${e?.message || e}`, 'error')
     } finally {
       setBusy(false)
     }
@@ -1277,7 +1281,7 @@ export default function App() {
   }, [settings.anki_edit_conflict, runGenerateWithPolicy, setBusy, persistPaper])
 
   // ─── Generate a whole folder ─────────────────────
-  // Right-click a folder → "Generate all cards in folder". Runs the same
+  // Right-click a folder → "Add all cards in folder to Anki". Runs the same
   // per-paper Generate on every paper in the folder and its subfolders, one at
   // a time, after one confirmation and -- with the "Ask" policy -- one combined
   // conflict choice for the whole folder. busy stays 'generating' for the whole
@@ -1785,6 +1789,7 @@ export default function App() {
         onSelectFolder={setSelectedFolder} selectedFolder={selectedFolder}
         onGoHome={handleGoHome}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenGuide={() => setShowGuide(true)}
         onDeleteFolder={handleDeleteFolder}
         onRenameFolder={handleRenameFolder}
         onGenerateFolder={handleGenerateFolder}
@@ -1927,7 +1932,7 @@ export default function App() {
             onSelectPaper={handleSelectPaper}
             onCreatePaper={handleCreatePaper}
             onImportMarkdown={handleImportMarkdown}
-            onOpenSettings={() => setShowSettings(true)}
+            onOpenGuide={() => setShowGuide(true)}
           />
         )}
       </div>
@@ -1983,6 +1988,10 @@ export default function App() {
             />
           </div>
         </>
+      )}
+      {showGuide && (
+        <GuideWindow topic={guideTopic} onTopicChange={setGuideTopic} onClose={() => setShowGuide(false)}
+          onOpenSettings={() => { setShowGuide(false); setSettingsSection('files'); setShowSettings(true) }} />
       )}
       {showSettings && <Settings settings={settings} onSave={handleSaveSettings} onClose={() => { setShowSettings(false); setSettingsSection(null) }}
         initialSection={settingsSection}

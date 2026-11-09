@@ -13,6 +13,7 @@ Following the Review Heatmap / Pomodium pattern:
 import os
 import json
 import re
+import time
 from typing import List, Dict, Optional, Any
 
 from .paper import Paper, CardReference
@@ -225,6 +226,9 @@ def save_paper(paper: Paper) -> str:
     _migrate_to_collection_if_needed()
 
     paper.content = _strip_block_ids(paper.content)
+    # Stamped before either copy is written, so both carry the same time and
+    # a copy that failed to write is the older one (see _current_copy).
+    paper.saved_at = time.time()
     data = paper.to_dict()
 
     col = _get_collection()
@@ -258,30 +262,60 @@ def save_paper(paper: Paper) -> str:
     return file_path
 
 
+def _current_copy(disk: Optional[Paper], stored: Optional[Paper]) -> Optional[Paper]:
+    """Of a paper's file copy and collection copy, the one saved last.
+
+    save_paper() writes the collection first and the files after, and a
+    failed file write is only logged. Reading the files unconditionally then
+    handed back the older paper -- its old text and, worse, its old list of
+    which notes are its cards, so the next Generate could duplicate cards or
+    delete the wrong ones. AnkiWeb sync does the same on a second computer:
+    the collection arrives up to date while that machine's files stay behind.
+
+    The files win a tie, so a copy written before saved_at existed (both 0),
+    or a paper moved in the file manager, reads from disk exactly as before.
+    A stale file copy is rewritten from the collection on the way out.
+    """
+    if disk is None or stored is None:
+        return disk or stored
+    if (stored.saved_at or 0.0) > (disk.saved_at or 0.0):
+        mirror_paper_to_disk_quietly(stored)
+        return stored
+    return disk
+
+
+def _paper_from_collection(data: Any) -> Optional[Paper]:
+    if not isinstance(data, dict):
+        return None
+    paper = Paper.from_dict(data)
+    paper.content = _strip_block_ids(paper.content)
+    return paper
+
+
 def load_paper(paper_id: str) -> Optional[Paper]:
-    """Load a paper by its ID, from disk when it is there."""
+    """Load a paper by its ID: the newer of its disk and collection copies."""
     _migrate_to_collection_if_needed()
 
+    disk = None
     try:
         root = get_storage_dir()
         md_path = index_papers_on_disk(root).get((paper_id or "").lower())
         if md_path:
-            paper = _read_paper_from_files(md_path, root)
-            if paper is not None:
-                return paper
+            disk = _read_paper_from_files(md_path, root)
     except Exception:
         pass   # fall through to the collection copy
 
+    stored = None
     papers_map = _collection_get(COLLECTION_PAPERS_KEY, {})
     if isinstance(papers_map, dict):
-        data = papers_map.get(paper_id)
-        if isinstance(data, dict):
-            try:
-                paper = Paper.from_dict(data)
-                paper.content = _strip_block_ids(paper.content)
-                return paper
-            except Exception as e:
-                print(f"[Anki Papers] Error loading paper {paper_id}: {e}")
+        try:
+            stored = _paper_from_collection(papers_map.get(paper_id))
+        except Exception as e:
+            print(f"[Anki Papers] Error loading paper {paper_id}: {e}")
+
+    paper = _current_copy(disk, stored)
+    if paper is not None:
+        return paper
 
     # Fallback to disk if collection is unavailable
     storage_dir = get_storage_dir()
@@ -338,16 +372,18 @@ def list_papers() -> List[Paper]:
     from_disk = _papers_from_disk()
     if from_disk:
         # Any paper the collection knows about but disk does not (an unreadable
-        # or not-yet-mirrored file) is filled in from the collection.
+        # or not-yet-mirrored file) is filled in from the collection, and one
+        # whose collection copy was saved later than its files replaces them.
         fallback = _collection_get(COLLECTION_PAPERS_KEY, {})
         if isinstance(fallback, dict):
             for pid, data in fallback.items():
-                if pid in from_disk or not isinstance(data, dict):
-                    continue
                 try:
-                    from_disk[pid] = Paper.from_dict(data)
+                    stored = _paper_from_collection(data)
                 except Exception:
                     continue
+                if stored is None:
+                    continue
+                from_disk[pid] = _current_copy(from_disk.get(pid), stored)
         return list(from_disk.values())
 
     papers_map = _collection_get(COLLECTION_PAPERS_KEY, {})
@@ -801,6 +837,8 @@ def _render_paper_meta(paper) -> str:
         "modified_at": getattr(paper, "modified_at", None),
         "show_chapter_bar": bool(getattr(paper, "show_chapter_bar", False)),
         "qbank_prefix": getattr(paper, "qbank_prefix", "") or "",
+        "saved_at": float(getattr(paper, "saved_at", 0.0) or 0.0),
+        "title_tag": getattr(paper, "title_tag", None),
         "card_refs": refs,
     }
     return json.dumps(meta, indent=2, ensure_ascii=False) + "\n"
@@ -1037,6 +1075,11 @@ def _read_paper_from_files(md_path: str, root: str = None) -> Optional[Paper]:
         paper.created_at = meta["created_at"]
     if meta.get("modified_at"):
         paper.modified_at = meta["modified_at"]
+    try:
+        paper.saved_at = float(meta.get("saved_at") or 0.0)
+    except (TypeError, ValueError):
+        paper.saved_at = 0.0
+    paper.title_tag = meta.get("title_tag") or None
     refs = []
     for raw in meta.get("card_refs") or []:
         try:
