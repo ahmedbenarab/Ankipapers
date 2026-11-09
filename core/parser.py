@@ -30,6 +30,26 @@ except ImportError:
     _spec.loader.exec_module(_cb)
     code_block_crumb_html, code_line_map = _cb.code_block_crumb_html, _cb.code_line_map
 
+try:
+    from .qbank import inherited_qbank_ids, strip_qbank_comments
+    from .flags import inherited_flag, strip_flag_comments
+except ImportError:
+    # Same single-file fallback as code_blocks above.
+    import importlib.util as _ilu
+    import os as _os
+
+    def _load(name):
+        spec = _ilu.spec_from_file_location(
+            "ap_" + name, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), name + ".py")
+        )
+        mod = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    _qb, _fl = _load("qbank"), _load("flags")
+    inherited_qbank_ids, strip_qbank_comments = _qb.inherited_qbank_ids, _qb.strip_qbank_comments
+    inherited_flag, strip_flag_comments = _fl.inherited_flag, _fl.strip_flag_comments
+
 
 @dataclass
 class ParsedCard:
@@ -45,6 +65,9 @@ class ParsedCard:
     block_id: Optional[str] = None  # stable id from <!--ap:uuid--> suffix
     supplement: str = ""
     inline_tags: List[str] = None  # Add this to store our [[tags]]
+    qbank_ids: List[str] = None  # <!--uw:...--> ids from this line and its parents (core/qbank.py)
+    flag: int = 0  # Anki flag from the nearest <!--flag:...--> (core/flags.py)
+    flag_line: Optional[int] = None  # the line that flag comes from
     
     @property
     def is_valid(self) -> bool:
@@ -251,6 +274,8 @@ def parse_line(index: int, line: str) -> ParsedLine:
         indent_level = len(bullet_match.group(1)) // 4
 
     card_content, stable_block_id = split_stable_block_id(card_content)
+    # Question-bank ids and flags are for Anki, never card text (core/qbank.py, core/flags.py).
+    card_content = strip_flag_comments(strip_qbank_comments(card_content))
 
     # If the line is meant to be a Supplement (&&), treat it as plain text 
     # so it bypasses the card-creation regex below.
@@ -443,9 +468,13 @@ def supplement_text_from_child(child_content: str) -> Optional[str]:
 def extract_cards(content: str) -> List[ParsedCard]:
     """Extract all cards from a document."""
     parsed_lines = parse_document(content)
+    raw_lines = content.split("\n")
+    code_lines = code_line_map(raw_lines)
     cards = []
     for i, line in enumerate(parsed_lines):
         if line.card and line.card.is_valid:
+            line.card.qbank_ids = inherited_qbank_ids(raw_lines, i, code_lines)
+            line.card.flag, line.card.flag_line = inherited_flag(raw_lines, i, code_lines)
             supplement_texts = []
             card_indent = line.indent_level
             
@@ -528,7 +557,7 @@ def render_breadcrumb_crumb(text: str) -> str:
 
 
 def _strip_breadcrumb_tags(text: str) -> str:
-    """Remove [[tags]] from a line that is being shown as a breadcrumb.
+    """Remove [[tags]], <!--uw:...--> ids and <!--flag:...--> from a breadcrumb line.
 
     A tag such as [[NH]] is an instruction to Anki Papers, not something the
     author wrote to read back. It already does its job by tagging the card, so
@@ -536,7 +565,7 @@ def _strip_breadcrumb_tags(text: str) -> str:
     Everything else on the line is kept exactly as written -- that text is the
     context the breadcrumb exists to show.
     """
-    cleaned = INLINE_TAG_PATTERN.sub(" ", text)
+    cleaned = INLINE_TAG_PATTERN.sub(" ", strip_flag_comments(strip_qbank_comments(text)))
     return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 

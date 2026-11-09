@@ -6,6 +6,7 @@ import {
   pickImage, pasteImage, exportPdf, exportMarkdown, importMarkdown, getSettings, saveSettings as saveSettingsBridge,
   getMediaDir, getTextReplacements, convertEmphasisToTags, openInBrowser, moveCardsToDeck, saveSourceLink, loadSourceLink, openUrl,
   getNoteStats, unsuspendNote, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
+  getQbankPrefix, setFolderQbankPrefix,
 } from './bridge'
 import { buildOutline } from './outline'
 import { buildCardRefIndex, resolveNoteIdFromIndex } from './crossLink'
@@ -1161,6 +1162,13 @@ export default function App() {
       const parts = [`${result.created} created`]
       if (result.updated) parts.push(`${result.updated} updated`)
       if (result.deleted) parts.push(`${result.deleted} removed`)
+      if (result.flags_changed) parts.push(`${result.flags_changed} flagged or unflagged`)
+      // Headings whose <!--flag:...--> came off because every card under them
+      // was unflagged in Anki (core/flags.py).
+      const unflagged = result.unflagged_headings || []
+      if (unflagged.length) {
+        parts.push(`flag removed from ${unflagged.length === 1 ? `“${unflagged[0]}”` : `${unflagged.length} headings`} (cleared in Anki)`)
+      }
       showToast(parts.join(', '), 'success')
     } catch (e) {
       showToast(`Generate failed: ${e?.message || e}`, 'error')
@@ -1182,17 +1190,30 @@ export default function App() {
     () => (paper?.card_refs || []).map((r) => r.anki_note_id).filter((n) => n != null),
     [paper?.card_refs],
   )
+  // Read whether or not weak-spot markers are on: the same stats carry each
+  // card's flag and suspension, which the editor and Outline always show.
   const refreshNoteStats = useCallback(async () => {
-    if (!weakMarkersOn || !paperNoteIds.length) { setNoteStats(null); return }
+    if (!paperNoteIds.length) { setNoteStats(null); return }
     const res = await getNoteStats(paperNoteIds)
     setNoteStats(res?.stats || null)
-  }, [weakMarkersOn, paperNoteIds])
+  }, [paperNoteIds])
   useEffect(() => { refreshNoteStats() }, [refreshNoteStats])
+  // Back from Anki's Browser (suspended or unflagged something there): read
+  // again, so the gutter rule, ⓢ and counts are current without a Generate.
+  useEffect(() => {
+    window.addEventListener('focus', refreshNoteStats)
+    return () => window.removeEventListener('focus', refreshNoteStats)
+  }, [refreshNoteStats])
+  // Settings → Suspended Card Opacity, for the editor and the Outline alike.
+  useEffect(() => {
+    const pct = Math.min(100, Math.max(30, Number(settings.suspended_card_opacity) || 85))
+    document.documentElement.style.setProperty('--suspended-opacity', String(pct / 100))
+  }, [settings.suspended_card_opacity])
   useEffect(() => { setWeakOnly(false); setVisibleLine(0) }, [paper?.id])
 
   const weakCount = useMemo(
-    () => (noteStats ? Object.values(noteStats).filter((s) => s && s.status).length : 0),
-    [noteStats],
+    () => (weakMarkersOn && noteStats ? Object.values(noteStats).filter((s) => s && s.status).length : 0),
+    [noteStats, weakMarkersOn],
   )
   useEffect(() => { if (weakCount === 0) setWeakOnly(false) }, [weakCount])
 
@@ -1207,13 +1228,20 @@ export default function App() {
   const outline = useMemo(() => {
     if (!paper) return null
     const idx = buildCardRefIndex(paper.card_refs)
-    const statusOf = (i, line) => {
+    const statsAt = (i, line) => {
       if (!noteStats) return null
       const nid = resolveNoteIdFromIndex(i, line, idx)
-      return nid != null ? noteStats[String(nid)]?.status || null : null
+      return nid != null ? noteStats[String(nid)] || null : null
     }
-    return buildOutline(paper.content, statusOf)
-  }, [paper, noteStats])
+    const statusOf = (i, line) => (weakMarkersOn ? statsAt(i, line)?.status || null : null)
+    const suspendedOf = (i, line) => {
+      const st = statsAt(i, line)
+      return st ? { cards: st.cards || 0, suspended: st.suspended_cards || 0 } : null
+    }
+    const showSuspended = settings.show_suspended_cards !== false
+    return buildOutline(paper.content, statusOf, suspendedOf)
+      .map((it) => ({ ...it, faded: showSuspended && it.allSuspended }))
+  }, [paper, noteStats, weakMarkersOn, settings.show_suspended_cards])
 
   const handleGenerate = useCallback(async () => {
     const paper = paperRef.current
@@ -1277,7 +1305,7 @@ export default function App() {
 
   const runFolderGenerate = useCallback(async (folder, policy) => {
     const list = folderGenPapersRef.current
-    const totals = { created: 0, updated: 0, deleted: 0 }
+    const totals = { created: 0, updated: 0, deleted: 0, flagsChanged: 0, unflagged: 0 }
     const failures = []
     setBusy(true, 'generating')
     try {
@@ -1296,6 +1324,8 @@ export default function App() {
             totals.created += res?.created || 0
             totals.updated += res?.updated || 0
             totals.deleted += res?.deleted || 0
+            totals.flagsChanged += res?.flags_changed || 0
+            totals.unflagged += (res?.unflagged_headings || []).length
           }
         } catch (e) {
           failures.push({ id: p.id, title, reason: e?.message || String(e) })
@@ -1390,6 +1420,34 @@ export default function App() {
     setPapers((list) => list.map((x) => (x.id === next.id ? { ...x, show_chapter_bar: next.show_chapter_bar } : x)))
     const r = await persistPaper(next)
     if (r?.error) showToast(r.error, 'error')
+  }, [persistPaper])
+
+  // ─── Question-tag prefix (sidebar right-click on a paper or folder) ───
+  // A heading's <!--uw:3252--> ids tag its cards "<prefix>::3252"; the
+  // prefix is the paper's, else the nearest folder's, else Settings'
+  // (core/qbank.py). Empty clears this level's own prefix.
+  const handleQbankPrefix = useCallback(async (target) => {
+    const isPaper = target.type === 'paper'
+    const info = await getQbankPrefix(isPaper ? { paper_id: target.id } : { folder_path: target.path })
+    if (!info || info.error) { showToast(info?.error || 'Could not read the prefix', 'error'); return }
+    const answer = window.prompt(
+      `Question tag prefix for “${target.name}”: cards under a heading with uw3252 get <prefix>::3252.\n`
+      + `Leave empty to use “${info.inherited}”.`, info.own || '')
+    if (answer == null) return
+    const prefix = answer.trim().replace(/\s+/g, '_').replace(/^:+|:+$/g, '')
+    let r
+    if (!isPaper) {
+      r = await setFolderQbankPrefix(target.path, prefix)
+    } else if (paperRef.current?.id === target.id) {
+      const next = { ...paperRef.current, qbank_prefix: prefix }
+      setPaper(next)
+      r = await persistPaper(next)
+    } else {
+      const p = await loadPaper(target.id)
+      r = p ? await savePaper({ ...p, qbank_prefix: prefix }) : { error: 'Paper not found' }
+    }
+    if (r?.error) showToast(r.error, 'error')
+    else showToast(`Question tags: ${prefix || info.inherited}::<id>, applied at the next Generate`, 'success')
   }, [persistPaper])
   const activeSourceKey = paper ? activeSourceKeys[paper.id] : null
   const selectSource = useCallback((key) => {
@@ -1687,23 +1745,24 @@ export default function App() {
       }
     }
     
-    window.openZettel = async (title) => {
-      if (!title) return
-      const targetQuery = title.trim().toLowerCase().replace(/\s+/g, ' ')
-      const p = papers.find(pp => {
-        const t = (pp.title || '').trim().toLowerCase().replace(/\s+/g, ' ')
-        return t === targetQuery
-      })
-      if (p) {
-         await handleSelectPaper(p.id)
-      } else {
-         showToast(`Paper not found: ${title}`, 'error')
-      }
-    }
+    // Opened the paper a [[title]] link named. Retired: [[...]] is a card tag, not a link to a paper (2026-10-24).
+    // window.openZettel = async (title) => {
+    //   if (!title) return
+    //   const targetQuery = title.trim().toLowerCase().replace(/\s+/g, ' ')
+    //   const p = papers.find(pp => {
+    //     const t = (pp.title || '').trim().toLowerCase().replace(/\s+/g, ' ')
+    //     return t === targetQuery
+    //   })
+    //   if (p) {
+    //      await handleSelectPaper(p.id)
+    //   } else {
+    //      showToast(`Paper not found: ${title}`, 'error')
+    //   }
+    // }
 
     return () => { 
        delete window.jumpToBlock
-       delete window.openZettel 
+       // delete window.openZettel  // retired with the [[...]] paper links
     }
   }, [handleSelectPaper, papers])
 
@@ -1730,6 +1789,7 @@ export default function App() {
         onRenameFolder={handleRenameFolder}
         onGenerateFolder={handleGenerateFolder}
         onShareFolder={handleShareFolder}
+        onQbankPrefix={handleQbankPrefix}
         onMoveFolder={handleMoveFolder}
         collapsed={sidebarCollapsed}
         width={sidebarWidth}

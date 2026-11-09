@@ -24,6 +24,7 @@ import {
   Globe,
   Share,
   Image as ImageIcon,
+  Flag,
 } from 'lucide-react'
 
 function formatRelativeTime(modifiedAt) {
@@ -67,6 +68,7 @@ const GUIDE_TOPICS = [
   { id: 'start', icon: Sparkles, label: 'Start here' },
   { id: 'flashcards', icon: FileText, label: 'Making flashcards' },
   { id: 'occlusion', icon: ImageIcon, label: 'Image occlusion' },
+  { id: 'qbank', icon: Flag, label: 'Question tags and flags' },
   { id: 'organizing', icon: Hash, label: 'Organizing notes' },
   { id: 'code', icon: Braces, label: 'Code blocks' },
   { id: 'linking', icon: Link2, label: 'Linking papers' },
@@ -335,7 +337,8 @@ export default function WelcomeScreen({
                 <Ref code="[[tag]]" tone="muted">
                   Puts an Anki tag on that card, written as <code>AnkiPapers::tag</code>.
                   Anything you'd normally use tags for — searching, building a filtered
-                  deck before an exam — works the same way here.
+                  deck before an exam — works the same way here. Double brackets are only
+                  for tags: <code>[[Paper title]]</code> no longer links to a paper.
                 </Ref>
                 <Ref code="[[NH]]" tone="muted">
                   Short for “no heading”. Every card normally shows the headings it came
@@ -347,6 +350,62 @@ export default function WelcomeScreen({
                   the built-in Basic look and Solarized Styling: a calm, color-coded
                   style that is light in Anki's light mode and dark in dark mode.
                   Saving restyles every card at once, phone included after a sync.
+                </Ref>
+                <Ref code="BASIC  CLOZE" tone="muted">
+                  The bubble at the right of each card line says what kind of card it makes.
+                  Settings → Card Type Badges hides them for a cleaner page; a weak-spot
+                  marker and the open-in-Anki button stay.
+                </Ref>
+              </RefGroup>
+          )}
+          {guide === 'qbank' && (
+              <RefGroup
+                icon={Flag}
+                title="Question tags and flags"
+                blurb="Two words you can type at the end of a heading. Each turns into a hidden note on the heading, and Generate applies it to every card underneath: everything indented below it, smaller headings included."
+              >
+                <Ref code="## Heading uw3252" tone="heading">
+                  Type <code>uw</code> and a UWorld question number, then Space or Return.
+                  The word disappears into the heading, and every card under it gets the
+                  tag <code>UWorldABIM::3252</code>, so Anki's Browser can find all the
+                  cards from that question. Add more the same way, or several at once
+                  with <code>uw3252,4410</code>. Searching for 3252 finds the heading.
+                </Ref>
+                <Ref code="Changing the ids" tone="key">
+                  Click into the heading to see them, and edit or delete them there. An
+                  id you take off loses its tag from those cards at the next Generate.
+                  Tags you added yourself in Anki are never touched.
+                </Ref>
+                <Ref code="Question tag prefix" tone="key">
+                  <code>UWorldABIM</code> unless you change it, in Settings for everything,
+                  or for one paper or folder from its right-click menu in the sidebar —
+                  say <code>MKSAP</code> for a MKSAP folder.
+                </Ref>
+                <Ref code="## Heading flag:red" tone="heading">
+                  Flags every card under the heading in Anki. Use any of Anki's flags:
+                  red, orange, green, blue, pink, turquoise or purple, or their numbers
+                  1–7. Typing a new one replaces the old; <code>flag:none</code> takes it
+                  off. Where flagged headings sit inside each other, the nearest one wins.
+                </Ref>
+                <Ref code="The colored line" tone="key">
+                  The line beside the line numbers takes the flag's color from the heading
+                  down through everything under it. A card flagged in Anki on its own shows
+                  a small flag in that color beside its badge.
+                </Ref>
+                <Ref code="ⓢ" tone="key">
+                  A card line whose cards are suspended in Anki fades and gets this mark;
+                  hover it to see what it means. A heading whose cards are all suspended says
+                  “All suspended”. Settings turns it off and sets how faded the lines look.
+                </Ref>
+                <Ref code="Back from Anki" tone="key">
+                  Suspend, unsuspend or unflag cards in Anki's Browser, then come back to
+                  Anki Papers: the colored lines, ⓢ marks and counts catch up on their own,
+                  without a Generate.
+                </Ref>
+                <Ref code="Unflagging in Anki" tone="key">
+                  A flag you clear in Anki stays cleared: Generate only sets a flag when
+                  you change it in the paper. Clear every card under a heading and the
+                  heading loses its flag too, and the message after Generate says which.
                 </Ref>
               </RefGroup>
           )}
@@ -402,6 +461,12 @@ export default function WelcomeScreen({
                   under it, it starts folded up — click the little arrow beside it to
                   open it.
                 </Ref>
+                <Ref code="Enter" tone="key">
+                  Starts a new line at the same indentation as the one you were on.
+                  Pressed at the very start of a line, it moves that line down and leaves
+                  a blank one above it, still at the same indentation, and a card on the
+                  line keeps its link to Anki.
+                </Ref>
                 <Ref code="| Column | Column |" tone="muted">
                   A table. Write the rows with pipes between the cells and put a row
                   of <code>| --- | --- |</code> under the first one to make it the
@@ -420,7 +485,14 @@ export default function WelcomeScreen({
                 </Ref>
                 <Ref code="Outline" tone="key">
                   The Papers | Outline switch at the top of the sidebar lists this paper's
-                  headings with their card counts. Click one to jump there.
+                  headings with their card counts. Click one to jump there. A dot left of a
+                  heading shows its flag color, and a topic whose cards are all suspended is
+                  faded.
+                </Ref>
+                <Ref code="The number on a heading" tone="key">
+                  Every H1, H2 and H3 shows how many cards sit under it, at its right edge;
+                  hover it for “This section has 29 cards.” Settings → Card Counts hides
+                  them.
                 </Ref>
                 <Ref code="Weak spots" tone="key">
                   Lines whose cards you keep missing in Anki are marked amber (red for a
@@ -515,7 +587,8 @@ export default function WelcomeScreen({
                   Select the words you want to turn into a link, right-click them, and
                   choose <b>Create link…</b> Then search for the paper or heading it
                   should point at. The words stay readable — they just become
-                  underlined.
+                  underlined. This is the only way to link papers now; double brackets
+                  are for tags.
                 </Ref>
                 <Ref code="Following a link" tone="key">
                   Double-click it. You land on the exact line it points at, not just
@@ -778,6 +851,10 @@ export default function WelcomeScreen({
                     back. Turn it off in Settings.
                   </Ref>
                 )}
+                <Ref code="uw3252 / flag:red + Space" tone="key">
+                  At the end of a heading: tag or flag every card under it at Generate.
+                  See Question tags and flags.
+                </Ref>
                 <Ref code="Ctrl+Shift+D" tone="key">
                   Draft cards from the lines you've selected, or the line you're on.
                 </Ref>

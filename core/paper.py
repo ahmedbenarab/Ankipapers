@@ -21,6 +21,7 @@ class CardReference:
         synced: bool = False,
         block_id: Optional[str] = None,
         derived_hash: Optional[str] = None,
+        flag_applied: int = 0,
     ):
         self.line_index = line_index
         self.card_type = card_type  # "basic" or "cloze"
@@ -34,6 +35,9 @@ class CardReference:
         # the hash identical while the note no longer matched the paper — and
         # Generate could not tell that from someone editing the note in Anki.
         self.derived_hash = derived_hash
+        # The Anki flag Generate last set on this note's cards from a heading
+        # (0 = none). Lets a flag cleared in Anki stay cleared: see core/flags.py.
+        self.flag_applied = flag_applied
 
     def to_dict(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {
@@ -47,6 +51,8 @@ class CardReference:
             d["block_id"] = self.block_id
         if self.derived_hash:
             d["derived_hash"] = self.derived_hash
+        if self.flag_applied:
+            d["flag_applied"] = self.flag_applied
         return d
 
     @classmethod
@@ -59,6 +65,7 @@ class CardReference:
             synced=data.get("synced", False),
             block_id=data.get("block_id"),
             derived_hash=data.get("derived_hash"),
+            flag_applied=int(data.get("flag_applied") or 0),
         )
 
 
@@ -98,6 +105,8 @@ class Paper:
         self.modified_at = time.time()
         self.tags: List[str] = []
         self.show_chapter_bar = False
+        # Question-tag prefix for this paper ('' = the folder's, then Settings'); core/qbank.py
+        self.qbank_prefix = ""
 
     @property
     def full_path(self) -> str:
@@ -147,6 +156,7 @@ class Paper:
             "modified_at": self.modified_at,
             "tags": self.tags,
             "show_chapter_bar": bool(getattr(self, "show_chapter_bar", False)),
+            "qbank_prefix": getattr(self, "qbank_prefix", "") or "",
         }
 
     @classmethod
@@ -166,4 +176,5 @@ class Paper:
         paper.modified_at = data.get("modified_at", time.time())
         paper.tags = data.get("tags", [])
         paper.show_chapter_bar = bool(data.get("show_chapter_bar", False))
+        paper.qbank_prefix = data.get("qbank_prefix") or ""
         return paper

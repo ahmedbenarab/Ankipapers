@@ -41,6 +41,29 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 
 ## What's new
 
+**UWorld question tags and flags on headings.**
+- **Question tags:** at the end of a heading, type `uw3252` and press Space or Return. It turns into a hidden `<!--uw:3252-->`, and at Generate every card under the heading (everything indented beneath it, nested headings included) is tagged `UWorldABIM::3252`. Add more the same way (`uw4410`) or several at once (`uw3252,4410`). Take an id off the heading and its tag comes off those cards at the next Generate; tags you added yourself in Anki are never touched. Searching `3252` finds the heading. See [Question tags on headings](#question-tags-on-headings).
+- **Your own prefix:** Settings → Question Tag Prefix sets it everywhere (`UWorldABIM` by default). Right-click a paper or folder → **Question tag prefix…** to use another one there, say `MKSAP`.
+- **Flags:** type `flag:red` at the end of a heading (any Anki flag: red, orange, green, blue, pink, turquoise or purple, or 1–7; `flag:none` takes it off) and Generate flags every card under it. A flag you clear in Anki stays cleared, and once every card under a heading has been cleared there, the heading loses its flag too. See [Flags on headings](#flags-on-headings).
+- Both stay out of sight: they never show on the page, on cards, in breadcrumbs, the outline or the PDF. Click into the heading to see or edit them.
+
+**`[[…]]` is a card tag only.** Typing `[[` no longer opens a paper picker, and `[[Paper title]]` no longer links to a paper; it stays plain text. `[[tag]]` and `[[NH]]` work as before. To link papers, use right-click → **Create link…**.
+
+**Flags and suspended cards at a glance.**
+- **The flag rule:** the line beside the line numbers turns the color of a heading's flag (a dark red, neon orange or neon green, and the rest of Anki's flags) from the heading down through everything under it. Blank lines inside the section keep the color, and a flagged subheading shows its own color within its stretch.
+- **A card's own flag:** a card you flagged in Anki yourself, during review say, shows a small flag in that color beside its badge, whenever the heading's rule doesn't already say so.
+- **Suspended cards:** a card line whose cards are suspended in Anki fades and gets a ⓢ; hover it for what it means. A heading whose cards are all suspended says **ⓢ All suspended** at its right edge (or "3 of 8 suspended" when only some are).
+- **Card counts:** every H1, H2 and H3 shows the number of cards under it at its right edge; hover the number for "This section has 29 cards."
+- **Outline:** a dot in each flagged heading's color, left of its name (weak-spot dots stay on the right), and fully suspended topics faded.
+- **Settings:** **Card Counts** and **Suspended Cards** turn those parts off, and **Suspended Card Opacity** sets how faded a suspended line looks (85% to start).
+- **Always current:** suspend, unsuspend or unflag something in Anki's Browser, come back to Anki Papers, and the page catches up straight away — no Generate needed.
+
+**Every line shows its own card's state.** The editor now finds each line's Anki note by the line's own hidden card name. Before, it went by the line numbers saved at the last Generate, so after adding or removing a line, the lines below could show their neighbor's suspension, flag or weak-spot marker, and open the neighbor's note in Anki.
+
+**Card type badges can be hidden.** Settings → **Card Type Badges** turns off the Basic, Reversible and Cloze bubbles at the right edge of card lines, for a cleaner page. A weak-spot pill and the open-in-Anki button stay where they are.
+
+**Enter at the start of a card line keeps its indent.** The blank line it leaves above now sits at the line's own indentation instead of jumping to the left margin, level with the H1s, and Tab works on it again. The card's hidden name moves down with its text, so the card stays attached to the right line.
+
 **Image occlusion from your pictures.**
 - **Create Image Occlusion Cards:** right-click a picture in a paper and choose **Create Image Occlusion Cards**. Anki's Add window opens on its built-in **Image Occlusion** note type, with the picture already in the mask editor and the deck set to the paper's deck. Draw your masks and press Add. See [Image occlusion](#image-occlusion).
 - **A count on the picture:** once a picture has occlusion cards, a small badge in its lower-right corner shows how many. It updates by itself when you add, edit or delete them in Anki.
@@ -249,6 +272,54 @@ Murmur increases with Valsalva >> Hypertrophic cardiomyopathy [[NH]]
 
 Without `[[NH]]`, the card would helpfully announce the answer in its own header.
 
+### Question tags on headings
+
+Tie a heading to the qbank questions it came from, and every card under it is tagged with them in Anki.
+
+At the end of a heading, type `uw` and the question id, then press **Space** or **Return**:
+
+```markdown
+## Hypertrophic cardiomyopathy uw3252      ← as you type it
+## Hypertrophic cardiomyopathy             ← what the page shows afterwards
+```
+
+The id goes into a hidden comment on the heading (`<!--uw:3252-->`), which you see only while you're editing that line. At Generate, every card under the heading gets the tag `UWorldABIM::3252`, so `tag:UWorldABIM::3252` in Anki's Browser finds exactly the cards from that question.
+
+- **Which cards:** the ones the heading folds over, that is, every line indented beneath it, including cards under nested headings. A card under two tagged headings gets both sets of tags. A line at the same indent as the heading isn't under it.
+- **Several questions:** type `uw4410` on the same heading to add another, or `uw3252,4410` at once. They share one comment.
+- **Removing one:** click into the heading and delete the id from the comment. Its tag comes off those cards at the next Generate. Only tags under the prefix are managed; anything else on a note, including tags you added in Anki, is left alone.
+- **Cards you already have** are tagged too: adding an id to a heading doesn't change any card's text, so Generate checks every card's question tags on every run.
+- **The prefix** is `UWorldABIM` unless you change it. Settings → **Question Tag Prefix** sets it for everything; right-click a paper or folder in the sidebar → **Question tag prefix…** sets it for just that paper, or that folder and everything in it. The paper's own prefix wins, then the nearest folder's, then Settings. Changing a prefix doesn't remove the tags already on your cards under the old one.
+- **Searching** for `3252` finds the heading, so you can look up where you wrote a question down.
+
+### Flags on headings
+
+Flag every card under a heading with one of Anki's flags. At the end of a heading, type `flag:` and a color, then press **Space** or **Return**:
+
+```markdown
+## Aortic stenosis flag:red      ← as you type it
+```
+
+| Type | Anki flag |
+|---|---|
+| `flag:red` or `flag:1` | Red |
+| `flag:orange` or `flag:2` | Orange |
+| `flag:green` or `flag:3` | Green |
+| `flag:blue`, `flag:pink`, `flag:turquoise`, `flag:purple` (or `4`–`7`) | The other four |
+| `flag:none` | Takes the flag off the heading |
+
+Like the question ids it becomes a hidden comment (`<!--flag:red-->`), and typing a new flag replaces the old one. At Generate every card under the heading gets the flag, including both cards of a reversible line and every card of a cloze. A card holds one flag, so when flagged headings are nested, the nearest one wins.
+
+You flag cards in Anki as well, so Generate follows a few rules to keep the two in step:
+
+- **A new or changed flag in the paper** goes onto the cards.
+- **A flag you clear in Anki stays cleared.** Generate only sets a flag when the heading's flag changed since the last Generate.
+- **When every card under a heading has been cleared in Anki**, the comment comes off the heading too, and the message after Generate names it. If only some were cleared, the heading keeps its flag and the cleared cards stay cleared.
+- **Taking the flag off the heading** clears it from the cards that still show it. A different flag you set on a card in Anki stays.
+- Changing a heading's flag in the paper re-flags all of its cards, including any you had flagged differently in Anki.
+
+In the editor, the line beside the line numbers takes the flag's color from the heading down through everything under it, so a red topic reads red from top to bottom. A card flagged in Anki on its own, with a flag the heading doesn't account for, shows a small flag in that color beside its badge. Suspended cards are shown too: the line fades and gets a ⓢ, and the heading above says "All suspended" when every card under it is (Settings → Suspended Cards and Suspended Card Opacity; Settings → Card Counts for the count on each heading).
+
 ### Image occlusion
 
 Hide parts of a picture and get asked what's underneath, using Anki's own **Image Occlusion** (built into Anki 23.10 and later; no other add-on needed).
@@ -320,7 +391,7 @@ The same breadcrumb appears in the **Create link…** search results, so two hea
 3. Search for a target. Results are pre-filtered by the phrase you highlighted and show the full breadcrumb.
 4. Pick one. The phrase becomes underlined.
 
-You can link **from** body text or a heading, and **to** any heading at any depth or to a whole document. Typing `[[` in a line autocompletes a link to another paper by title.
+You can link **from** body text or a heading, and **to** any heading at any depth or to a whole document. (`[[Paper title]]` used to link to a paper too; it's now plain text, and `[[…]]` is only for [card tags](#tag-and-nh).)
 
 ### Following a link
 
@@ -365,6 +436,8 @@ You do not need to think about them. But if you are editing papers outside the a
 
 The first line of each file carries the same kind of marker for the paper itself (`<!--ap-paper:…-->`), which is what lets you rename or move a file on disk without breaking the links that point into it.
 
+Headings can carry two more hidden comments, ones you write yourself: `<!--uw:3252-->` for [question tags](#question-tags-on-headings) and `<!--flag:red-->` for [flags](#flags-on-headings). They sit right after the heading's text, before its anchor if it has one.
+
 ---
 
 ## Links panel and graph
@@ -398,7 +471,7 @@ The sidebar search takes more than plain words:
 | `-pediatric` | Exclude papers matching this |
 | `iron OR b12` | Alternative branches: `a b OR c d` matches `(a AND b)` or `(c AND d)` |
 
-Every result is a place, not an excerpt: one row per matching line, reading `Document › H1 › H2 › H3 · line N` — for example `Endocrinology › Hyperparathyroidism › Workup · line 12`. Heading levels the line doesn't sit under are left out, so a line above the first heading is just `Document · line N`. Click a row to open the paper with every section unfolded, scrolled so that line sits mid-screen and briefly highlighted (in Source view, the cursor lands on it). Following a link, the Links panel, the graph and back/forward unfold only the sections around their target line. A paper that matches only by its title, folder, deck or tags gets a single row with badges saying which. A very common word shows the first 200 rows and says how many there are in all. Hidden anchors and link addresses are never searched.
+Every result is a place, not an excerpt: one row per matching line, reading `Document › H1 › H2 › H3 · line N` — for example `Endocrinology › Hyperparathyroidism › Workup · line 12`. Heading levels the line doesn't sit under are left out, so a line above the first heading is just `Document · line N`. Click a row to open the paper with every section unfolded, scrolled so that line sits mid-screen and briefly highlighted (in Source view, the cursor lands on it). Following a link, the Links panel, the graph and back/forward unfold only the sections around their target line. A paper that matches only by its title, folder, deck or tags gets a single row with badges saying which. A very common word shows the first 200 rows and says how many there are in all. Hidden anchors and link addresses are never searched; question ids on headings are, so `3252` finds the heading it's on.
 
 ---
 
@@ -422,7 +495,7 @@ For each card line in the document:
 
 Cards are matched by their [hidden anchor](#the-hidden-anchors) first, falling back to exact text for papers written before anchors existed. Deletion is scoped to **the cards this paper created** — tracked individually, never by deck membership — so hand-made cards and other papers' cards sharing the same deck are never touched.
 
-Changes that do not touch the card's own line — a reworded `&&` supplement, a picture added or swapped, a renamed heading above the card — are applied too. Anki Papers records what each note's supplement and breadcrumb were when it last wrote them, which is how it tells a change you made in the paper from a change you made in Anki's Browser.
+Changes that do not touch the card's own line — a reworded `&&` supplement, a picture added or swapped, a renamed heading above the card — are applied too. So are [question tags](#question-tags-on-headings) and [flags](#flags-on-headings) from the headings above it; the message after Generate counts the cards whose flag changed. Anki Papers records what each note's supplement and breadcrumb were when it last wrote them, which is how it tells a change you made in the paper from a change you made in Anki's Browser.
 
 ### When a card was edited in Anki instead
 
@@ -482,7 +555,7 @@ The right end of the toolbar has three buttons:
 - **Export Markdown** — write the paper back out as a `.md` file.
 - **Export PDF** — render the document as a PDF.
 
-The PDF is drawn by the same renderer as the editor, so what you see is what prints: indentation, tables, images, blockquotes, and inline formatting all carry over. Cards print as clean question-and-answer blocks. Editing marks — `[[tags]]`, `[[NH]]`, and hidden anchors — are stripped, images are embedded directly in the file so it stands alone, and the page is Letter with half-inch margins, always in light mode regardless of your editor theme.
+The PDF is drawn by the same renderer as the editor, so what you see is what prints: indentation, tables, images, blockquotes, and inline formatting all carry over. Cards print as clean question-and-answer blocks. Editing marks — `[[tags]]`, `[[NH]]`, question ids, flags and hidden anchors — are stripped, images are embedded directly in the file so it stands alone, and the page is Letter with half-inch margins, always in light mode regardless of your editor theme.
 
 ---
 
@@ -497,7 +570,7 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 | `Ctrl+Shift+↓` | Unfold every collapsed section in the document |
 | `Ctrl+Shift+↑` | Fold every section back up to the document's default outline |
 | `Tab` / `Shift+Tab` | Indent / outdent the line and its children |
-| `Enter` | Split the line at the cursor |
+| `Enter` | Split the line at the cursor; the new line keeps its indentation |
 | `Backspace` at line start | Outdent, then merge into the line above |
 | `Ctrl+B` / `Ctrl+I` | Bold / italic (`<b>` / `<i>`) — press again to remove |
 | `Ctrl+U` | Underline — press again to remove |
@@ -511,7 +584,8 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 | `Ctrl+,` | Settings |
 | `Ctrl+Shift+D` | Draft cards from the selected lines (AI) |
 | `Ctrl+Shift+A` | Ask about this paper (AI) |
-| `[[` | Autocomplete a link to another paper by title |
+| `uw3252` then `Space` or `Enter`, on a heading | Tag the cards under it `UWorldABIM::3252` at Generate |
+| `flag:red` then `Space` or `Enter`, on a heading | Flag the cards under it at Generate (`flag:none` removes) |
 
 > The `Ctrl` shortcuts above use the **Control** key on every platform, macOS included. The two pasting shortcuts are the exception: they follow the system paste key, so on a Mac they are `⌘V` and `⇧⌘V`. `Ctrl+Shift+↓` and `Ctrl+Shift+↑` also accept `⇧⌘↓` and `⇧⌘↑` there. On a Mac, `Ctrl+5` and `Ctrl+6` only work while macOS's "Switch to Desktop 5/6" shortcuts are off, which is the default.
 
@@ -527,7 +601,7 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 | `auto_save_interval_seconds` | How often autosave runs |
 | `font_family` / `font_size` | Editor typeface |
 | `editor_theme` | `dark`, `light`, or `auto` |
-| `show_card_indicators` | Card markers in the left margin |
+| `show_card_indicators` | The Basic / Reversible / Cloze badges at the right edge of each card line (Settings → Card Type Badges; on by default) |
 | `color_scheme` | `carolina` (default), `purple`, `mono` or `crimson`: colors the app and the Basic card style |
 | `show_line_numbers` | Line numbers down the left of the editor and Source view (on by default) |
 | `show_chapter_bar` | `false` (default): the chapter bar shows only on papers where the toolbar's book button turned it on; `true`: on every paper that is a chapter of its folder's book or course |
@@ -536,6 +610,10 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 | `anki_edit_conflict` | `ask`, `preserve`, `overwrite`, or `abort` when a note was edited in Anki |
 | `card_style` | `basic` (built-in) or `solarized` (Solarized Styling), each in the color scheme's own version — restyles every card when changed |
 | `text_replacements_enabled` | Mac only: apply your macOS Text Replacements as you type (on by default) |
+| `show_heading_card_counts` | How many cards sit under each H1, H2 and H3, at the right edge of the heading (on by default) |
+| `show_suspended_cards` | Fade suspended card lines and mark them ⓢ, say "All suspended" on headings, fade those topics in the Outline (on by default) |
+| `suspended_card_opacity` | How visible a suspended line stays, 30–100 (85 by default) |
+| `qbank_tag_prefix` | The tag group for [question tags](#question-tags-on-headings): `UWorldABIM` (default) gives `UWorldABIM::3252`. A paper or folder can set its own from its right-click menu |
 | `ai_enabled` | Show the AI features (Draft cards, Ask). On by default |
 | `ai_provider` | `anthropic` (Claude), `gemini`, or `openai` (any OpenAI-compatible endpoint) |
 | `ai_model_<provider>` | The model for that provider, e.g. `ai_model_anthropic` |
@@ -583,12 +661,15 @@ Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manife
 | `core/storage.py` | Papers on disk, folder tree, collection mirror |
 | `core/card_manager.py` | Card generation, note types, markdown → note HTML |
 | `core/search_query.py` | The search language |
+| `core/qbank.py` | Question tags on headings: reading the ids, which cards they reach, the prefix |
+| `core/flags.py` | Flags on headings, and keeping them in step with flags set in Anki |
 | `gui/webview.py` | Qt window and close-safety handling |
 | `gui/bridge.py` | `QWebChannel` bridge, PDF export, media |
 | `web/` | Built static UI loaded by the webview |
 | `web_src/` | React source; build output goes to `web/` |
 | `web_src/src/docLinks.js` | Link anchors, `ap://` addressing, target search, backlink and graph index |
 | `web_src/src/printDocument.js` | The PDF renderer |
+| `web_src/src/qbankTags.js` / `cardFlags.js` | The `uw3252` and `flag:red` shortcuts, and hiding their comments |
 | `web_src/src/components/BlockEditor.jsx` | The block editor |
 | `web_src/src/components/LinkPicker.jsx` | "Create link…" search dialog |
 | `web_src/src/components/LinksPanel.jsx` | Backlinks and outgoing links |
@@ -620,6 +701,8 @@ Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manife
 | Supplement | `&& Background that rides along with the answer` |
 | Tag a card | `[[tag]]` → `AnkiPapers::tag` |
 | Suppress the heading breadcrumb | `[[NH]]` |
+| Tag a heading's cards with a question | `uw3252` at the end of the heading, then Space → `<!--uw:3252-->` → `UWorldABIM::3252` |
+| Flag a heading's cards | `flag:red` at the end of the heading, then Space → `<!--flag:red-->` |
 | Heading | `# Topic`, `## Section`, … to six levels |
 | Image | `![caption](picture.jpg)` |
 | Picture on a card | the same line, indented under the card — no `&&` needed |
@@ -630,7 +713,6 @@ Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manife
 | Underline | `<u>key point</u>` — via the toolbar or `Ctrl+U` |
 | Subscript / superscript | `H<sub>2</sub>O`, `x<sup>2</sup>` — via the toolbar or `Ctrl+5` / `Ctrl+6` |
 | Link to a heading or paper | `[phrase](ap://…)` — via right-click → **Create link…** |
-| Quick paper link | `[[Paper title]]` |
 | Hidden line anchor | `<!--ap:uuid-->` — written for you; leave it be |
 
 ---
@@ -638,7 +720,7 @@ Or double-click `build_ankiaddon.bat`. The script bundles `__init__.py`, `manife
 ## Developers
 
 - **Dr. Ahmed Benarab** — original author
-- **Dr. Trevor Thompson** — document links and the link graph, papers on disk, stable card identity, PDF export, plain-text paste, pictures on cards
+- **Dr. Trevor Thompson** — document links and the link graph, papers on disk, stable card identity, PDF export, plain-text paste, pictures on cards, question tags and flags on headings
 
 ## Contributing / issues
 

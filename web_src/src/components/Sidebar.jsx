@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
-import { FilePlus, FolderPlus, FileText, Folder, FolderOpen, ChevronRight, ChevronDown, Trash2, Pencil, ExternalLink, Home, X, Settings, CornerUpLeft, Search, PanelLeftClose, PanelLeftOpen, Zap, ListTree, BookOpen, Globe, Paperclip, Share } from 'lucide-react'
+import { FilePlus, FolderPlus, FileText, Folder, FolderOpen, ChevronRight, ChevronDown, Trash2, Pencil, ExternalLink, Home, X, Settings, CornerUpLeft, Search, PanelLeftClose, PanelLeftOpen, Zap, ListTree, BookOpen, Globe, Paperclip, Share, Tag } from 'lucide-react'
 import OutlinePanel from './OutlinePanel'
 
 // Hovering the rail slides the tree out; both numbers are deliberate. 260ms in
@@ -60,7 +60,7 @@ function SearchMatchBadges({ result }) {
   )
 }
 
-export default function Sidebar({ papers, folders, activePaperId, onSelectPaper, onGoToLine, onCreatePaper, onDeletePaper, onCreateFolder, onMovePaper, onMoveFolder, onSelectFolder, selectedFolder, onGoHome, onOpenSettings, onDeleteFolder, onRenameFolder, onGenerateFolder, onShareFolder, collapsed = false, width = 260, onToggleCollapse, outline = null, outlineTitle = '', outlineCurrentLine = 0, onJumpToHeading, currentPaper = null, folderSources = {}, onFolderSource, onCreateWaitingChapter, showWaiting = false }) {
+export default function Sidebar({ papers, folders, activePaperId, onSelectPaper, onGoToLine, onCreatePaper, onDeletePaper, onCreateFolder, onMovePaper, onMoveFolder, onSelectFolder, selectedFolder, onGoHome, onOpenSettings, onDeleteFolder, onRenameFolder, onGenerateFolder, onShareFolder, onQbankPrefix, collapsed = false, width = 260, onToggleCollapse, outline = null, outlineTitle = '', outlineCurrentLine = 0, onJumpToHeading, currentPaper = null, folderSources = {}, onFolderSource, onCreateWaitingChapter, showWaiting = false }) {
   // Papers (the folder tree) or Outline (the open paper's headings).
   const [tab, setTab] = useState('papers')
   const [peeking, setPeeking] = useState(false)
@@ -745,6 +745,16 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
         <>
           <div className="context-backdrop" onClick={() => setContextMenu(null)} />
           <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
+            {contextMenu.type === 'paper' && onQbankPrefix && (
+              <div className="context-item" onClick={() => {
+                const p = contextMenu.paper
+                setContextMenu(null)
+                onQbankPrefix({ type: 'paper', id: p.id, name: p.title })
+              }}>
+                <Tag size={13} />
+                <span>Question tag prefix…</span>
+              </div>
+            )}
             {contextMenu.type === 'paper' && (
               <div className="context-item danger" onClick={() => {
                 if (confirm(`Delete "${contextMenu.paper.title}"?`)) onDeletePaper(contextMenu.paper.id)
@@ -809,6 +819,16 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
                     )}
                     <div className="context-menu-sep" />
                   </>
+                )}
+                {onQbankPrefix && (
+                  <div className="context-item" onClick={() => {
+                    const f = contextMenu.folder
+                    setContextMenu(null)
+                    onQbankPrefix({ type: 'folder', path: f.path, name: f.name })
+                  }}>
+                    <Tag size={13} />
+                    <span>Question tag prefix…</span>
+                  </div>
                 )}
                 <div className="context-item" onClick={() => {
                   const f = contextMenu.folder

@@ -648,6 +648,53 @@ body.is-sidebar-snapping .sidebar-resizer { background: var(--orange); }
 .block-row-inner:has(.block-h1) .block-line-number { padding-top: 19px; }
 .block-row-inner:has(.block-h2) .block-line-number { padding-top: 17px; }
 .block-row-inner:has(.block-h3) .block-line-number { padding-top: 15px; }
+
+/* ─── Flags and suspension beside the lines ──────────
+   Anki's flag colors, the same in every theme and scheme: a dark, high-
+   contrast red, neon orange, neon green, then the four the app rarely uses. */
+:root {
+  --flag-1: #c1121f; --flag-2: #ff5f1f; --flag-3: #39ff14; --flag-4: #1e90ff;
+  --flag-5: #ff4fd8; --flag-6: #00e5d4; --flag-7: #9b5cff;
+}
+/* The gutter rule in the color of the heading flag over the line. It grows
+   into the gutter (1px border + 2px inset), so the text never moves. */
+.block-line-number.has-flag {
+  border-right-color: var(--line-flag);
+  box-shadow: inset -2px 0 0 var(--line-flag);
+}
+/* A card's own Anki flag, and ⓢ for suspended cards, beside its badge. */
+.card-anki-flag { display: flex; align-items: center; font-style: normal; }
+.suspended-mark {
+  font-style: normal; font-size: 14px; line-height: 1; color: var(--text-muted);
+  cursor: help; position: relative;
+}
+/* Hover bubbles for ⓢ and a heading's card count. Beside the mark, not
+   under it: each editor row clips what spills past its edges
+   (.block-row-inner), so a bubble below would be cut off. */
+.heading-count { position: relative; cursor: help; }
+.suspended-mark:hover::after,
+.heading-count:hover::after {
+  content: attr(data-tip); position: absolute; right: calc(100% + 8px); top: 50%;
+  transform: translateY(-50%); z-index: 30; width: max-content; white-space: nowrap;
+  background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);
+  font: 400 11.5px/1.4 var(--font-sans); letter-spacing: 0; padding: 6px 9px; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+/* Suspended card lines fade (Settings → Suspended Card Opacity); the badge
+   corner stays at full strength so ⓢ is easy to find. */
+.block-row-wrapper.is-suspended :is(.block-card, .block-cloze-wrapper) > :not(.block-card-type) {
+  opacity: var(--suspended-opacity, 0.85);
+}
+/* H1–H3: card count and suspended summary at the right edge. */
+.block-heading-wrap { position: relative; }
+.block-heading.has-meta { padding-right: 190px; }
+.heading-meta {
+  position: absolute; right: 4px; top: calc(50% - 3px); transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px;
+  font: 400 10.5px var(--font-sans); letter-spacing: 0; color: var(--text-muted); white-space: nowrap;
+}
+.heading-count { background: var(--bg-hover); border-radius: 10px; padding: 1px 7px; }
+.heading-suspended { display: flex; align-items: center; gap: 3px; }
 .source-editor-highlight.with-line-numbers,
 .source-editor.with-line-numbers { padding-left: 64px; }
 .source-editor-highlight.with-line-numbers {
@@ -1227,6 +1274,9 @@ textarea.block-input.block-input-textarea {
   font-weight: 800;
   letter-spacing: 0.5px;
 }
+/* Settings → Card Type Badges off: no bubble. A weak-spot pill and the
+   "open in Anki" button, which share the corner, stay. */
+.block-editor.hide-card-badges .block-card-type > span { display: none; }
 .block-card-browser-btn {
   background: transparent; border: none; color: var(--text-muted);
   cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center;
@@ -2656,6 +2706,11 @@ sub, sup { line-height: 0; }
 .outline-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--weak); flex-shrink: 0; }
 .outline-dot.is-leech { background: var(--leech); }
 .outline-count { font-size: 10.5px; color: var(--text-muted); font-weight: 400; flex-shrink: 0; }
+.settings-range { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.settings-range input[type="range"] { flex: 1; accent-color: var(--accent); }
+.settings-range-value { min-width: 38px; text-align: right; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.outline-flag { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.outline-item.is-suspended { opacity: var(--suspended-opacity, 0.85); }
 .outline-empty { font-size: 12px; color: var(--text-muted); padding: 14px 10px; line-height: 1.5; }
 
 /* The Outline tab's search box with no paper open */

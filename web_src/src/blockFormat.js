@@ -279,8 +279,9 @@ export function formatInlineRaw(text, mediaDir) {
     if (next === r) break
     r = next
   }
-  // Zettelkasten links
-  r = r.replace(/\[\[(.+?)\]\]/g, '<span class="block-zettel-link" data-title="$1">[[$1]]</span>')
+  // Zettelkasten links -- retired: [[...]] is a card tag, not a link to a paper (2026-10-24), so it is
+  // left as the text it is. The old link to the paper of that title:
+  // r = r.replace(/\[\[(.+?)\]\]/g, '<span class="block-zettel-link" data-title="$1">[[$1]]</span>')
   // Document links: [text](ap://paperId#blockId)
   r = r.replace(AP_LINK_RE, (_m, text, target) => {
     const safe = String(target).replace(/["'<>]/g, '')

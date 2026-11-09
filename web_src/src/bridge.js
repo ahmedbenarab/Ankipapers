@@ -272,6 +272,15 @@ export async function getWebBrowser() {
   return call('get_web_browser');
 }
 
+// Question-tag prefix (core/qbank.py): { own, inherited, effective } for a
+// paper ({ paper_id }) or a folder ({ folder_path }).
+export async function getQbankPrefix(target) {
+  return call('get_qbank_prefix', target);
+}
+export async function setFolderQbankPrefix(folderPath, prefix) {
+  return call('set_folder_qbank_prefix', { folder_path: folderPath, prefix });
+}
+
 // Source panel
 export async function pickPdfFile() {
   return call('pick_pdf_file');
@@ -448,9 +457,11 @@ function createMockBridge() {
     occlusion_edit: ({ name }) => { console.log('Mock: edit occlusions for', name); return { ok: true }; },
     set_web_browser: ({ open }) => ({ open: !!open }),
     get_web_browser: () => ({ open: false }),
+    get_qbank_prefix: () => ({ own: '', inherited: 'UWorldABIM', effective: 'UWorldABIM' }),
+    set_folder_qbank_prefix: () => ({ ok: true }),
     get_settings: () => ({
       default_deck: 'Default', auto_save_interval_seconds: 30, font_size: 14,
-      font_family: 'JetBrains Mono', editor_theme: 'dark', show_card_indicators: true, show_line_numbers: true, color_scheme: 'carolina', weak_spot_markers: true,
+      font_family: 'JetBrains Mono', editor_theme: 'dark', show_card_indicators: true, show_heading_card_counts: true, show_suspended_cards: true, suspended_card_opacity: 85, show_line_numbers: true, color_scheme: 'carolina', weak_spot_markers: true,
       anki_edit_conflict: 'ask',
     }),
     // Mirrors gui/bridge.py: a changed card_style reports it was applied.
@@ -507,6 +518,7 @@ if (typeof window !== 'undefined') {
     searchPapers, getHomeStats, getNoteStats, unsuspendNote,
     importMarkdown, exportMarkdown, exportPdf, exportPapersToDisk,
     getSettings, saveSettings, openUrl, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
+    getQbankPrefix, setFolderQbankPrefix,
     getOcclusionCounts, createOcclusion, editOcclusion,
     pickPdfFile, getPdfViewerUrl, getPdfUrl, extractPdfText, extractWebText,
     saveSourceLink, loadSourceLink, openSourceAtLocation,

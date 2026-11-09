@@ -21,6 +21,8 @@ from .parser import (
     AP_LINK_RE,
     CODE_RE,
 )
+from .qbank import DEFAULT_PREFIX, qbank_tags, sync_qbank_tags
+from .flags import note_card_flags, set_flag, strip_flag_comments
 
 
 ANKIPAPERS_TAG = "AnkiPapers"
@@ -1438,9 +1440,17 @@ def generate_cards(
     anki_edit_conflict: str = "preserve",
     card_style: str = "basic",
     color_scheme: str = "carolina",
+    qbank_prefix: str = DEFAULT_PREFIX,
+    report: Optional[Dict[str, Any]] = None,
 ) -> Tuple[int, int, int]:
     """
     Generate/update Anki cards from a paper.
+
+    qbank_prefix: the tag group question ids go under ("UWorldABIM" gives
+        UWorldABIM::3252); see core/qbank.py.
+    report: when given, filled with "flags_changed" (notes whose flag was
+        set or cleared) and "unflagged_headings" (headings whose flag comment
+        came off because every card under them was cleared in Anki).
 
     anki_edit_conflict:
         preserve — if the paper line is unchanged but Anki was edited, leave Anki as-is.
@@ -1474,6 +1484,29 @@ def generate_cards(
             refs_by_block_id[ref.block_id] = ref
         if ref.content_hash:
             existing_by_hash[ref.content_hash] = ref
+
+    report = report if report is not None else {}
+    report.setdefault("flags_changed", 0)
+    report.setdefault("unflagged_headings", [])
+
+    # Flags cleared in Anki on every card under a heading take the heading's
+    # <!--flag:...--> off too, before anything else reads the paper (see
+    # core/flags.py). Clearing them was done in Anki, not in the paper, so
+    # it must not hand those cards a flag either: one from a heading further
+    # up is recorded as already applied, and only a later change to the
+    # paper flags them again.
+    cleared = _headings_cleared_in_anki(col, cards, refs_by_block_id)
+    if cleared:
+        lines = paper.content.split("\n")
+        for line_index in cleared:
+            report["unflagged_headings"].append(_heading_label(lines[line_index]))
+            lines[line_index] = strip_flag_comments(lines[line_index])
+        paper.content = "\n".join(lines)
+        cards = extract_cards(paper.content)
+        now_wanted = {c.block_id: c.flag for c in cards if c.block_id}
+        for block_ids in cleared.values():
+            for bid in block_ids:
+                refs_by_block_id[bid].flag_applied = now_wanted.get(bid, 0)
 
     new_card_refs: List[CardReference] = []
 
@@ -1511,6 +1544,14 @@ def generate_cards(
             except Exception:
                 note = None
             if note is not None:
+                # Question tags follow the headings above the card, which the
+                # card's own hashes know nothing about: adding an id to a
+                # heading changes no card's text or context. So they are
+                # brought in line on every pass, and saved below on their own
+                # if nothing else rewrites the note.
+                note.tags, qbank_changed = sync_qbank_tags(
+                    list(note.tags), card.qbank_ids or [], qbank_prefix)
+                saved = False
                 bid = card.block_id or existing_ref.block_id
                 derived = derived_hash_for(card, paper)
                 # Whether this note actually got rewritten on this pass. Only
@@ -1523,7 +1564,7 @@ def generate_cards(
                 if existing_ref.content_hash != card.content_hash:
                     if _update_note_from_card(col, note, card, paper, deck_id):
                         updated += 1
-                        written = True
+                        written = saved = True
                 else:
                     diff = _note_field_diff(note, card, paper)
                     # A paper-side change (the supplement or the heading above
@@ -1549,12 +1590,16 @@ def generate_cards(
                     ):
                         if _update_note_from_card(col, note, card, paper, deck_id):
                             updated += 1
-                            written = True
+                            written = saved = True
                     elif not diff and not derived_moved:
                         # Nothing to write because nothing differs — the note
                         # already matches the paper, so the current hash is
                         # genuinely what it holds.
                         written = True
+                if qbank_changed and not saved and _save_note(col, note):
+                    updated += 1
+                flag_applied = _sync_flag(col, note.id, card.flag,
+                                          getattr(existing_ref, "flag_applied", 0) or 0, report)
                 if not bid or bid in used_block_ids:
                     bid = str(uuid.uuid4())
                 # Backfill. This card already exists in Anki and keeps its
@@ -1580,13 +1625,14 @@ def generate_cards(
                             derived if written
                             else (getattr(existing_ref, "derived_hash", None) or derived)
                         ),
+                        flag_applied=flag_applied,
                     )
                 )
                 reused = True
         if reused:
             continue
 
-        note_id = _create_note(col, card, paper, deck_id)
+        note_id = _create_note(col, card, paper, deck_id, qbank_prefix)
         if note_id:
             bid = card.block_id or str(uuid.uuid4())
             if bid in used_block_ids:
@@ -1604,6 +1650,7 @@ def generate_cards(
                     synced=True,
                     block_id=bid,
                     derived_hash=derived_hash_for(card, paper),
+                    flag_applied=_sync_flag(col, note_id, card.flag, 0, report),
                 )
             )
             created += 1
@@ -1628,7 +1675,72 @@ def generate_cards(
     return created, updated, deleted
 
 
-def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int) -> Optional[int]:
+def _sync_flag(col, note_id: int, wanted: int, last: int, report: Dict[str, Any]) -> int:
+    """Bring a note's cards to the heading's flag when the paper changed it.
+
+    `last` is the flag Generate set on them before. Equal to `wanted`: the
+    paper did not change, so Anki is left as it is (a flag cleared there stays
+    cleared). A new flag goes on every card. A flag taken off the heading
+    comes off only the cards still showing the one Generate set. Returns the
+    flag to remember as applied.
+    """
+    if wanted == last:
+        return last
+    card_flags = note_card_flags(col, note_id)
+    if wanted:
+        ids = list(card_flags)
+    else:
+        ids = [cid for cid, f in card_flags.items() if f == last]
+    if ids and set_flag(col, ids, wanted):
+        report["flags_changed"] += 1
+    return wanted
+
+
+def _headings_cleared_in_anki(col, cards: List[ParsedCard],
+                              refs_by_block_id: Dict[str, CardReference]) -> Dict[int, List[str]]:
+    """Flagged headings whose flag was cleared in Anki on every card under them.
+
+    {heading line: block ids of its cards}. A heading qualifies only when
+    Generate had already set its flag on all of its cards (so a heading
+    flagged since the last Generate is never mistaken for a cleared one) and
+    no card of any of their notes still shows that flag.
+    """
+    groups: Dict[int, List[ParsedCard]] = {}
+    for card in cards:
+        if card.flag and card.flag_line is not None:
+            groups.setdefault(card.flag_line, []).append(card)
+    cleared: Dict[int, List[str]] = {}
+    for line_index, group in groups.items():
+        refs = [refs_by_block_id.get(c.block_id) if c.block_id else None for c in group]
+        if not all(r and r.anki_note_id and r.flag_applied == c.flag for r, c in zip(refs, group)):
+            continue
+        flag = group[0].flag
+        if any(flag in note_card_flags(col, r.anki_note_id).values() for r in refs):
+            continue
+        cleared[line_index] = [c.block_id for c in group]
+    return cleared
+
+
+def _heading_label(line: str) -> str:
+    """A heading line as plain words, for the note shown after Generate."""
+    return re.sub(r"<!--.*?-->", "", re.sub(r"^\s*#{1,6}\s*", "", line)).strip()
+
+
+def _save_note(col, note) -> bool:
+    """Write a note that was changed in place (its tags, say) back to Anki."""
+    try:
+        if hasattr(col, "update_note"):
+            col.update_note(note)
+        else:
+            note.flush()
+        return True
+    except Exception as e:
+        print(f"[Anki Papers] Error saving note: {e}")
+        return False
+
+
+def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int,
+                 qbank_prefix: str = DEFAULT_PREFIX) -> Optional[int]:
     """Create a single Anki note from a ParsedCard."""
     try:
         context = _card_context(card, paper)
@@ -1647,6 +1759,9 @@ def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int) -> Optional[
         if hasattr(card, 'inline_tags') and card.inline_tags:
             for itag in card.inline_tags:
                 tags.append(f"AnkiPapers::{itag}")
+
+        # Question ids from the headings above it (core/qbank.py)
+        tags.extend(qbank_tags(card.qbank_ids or [], qbank_prefix))
 
         if card.card_type == "basic":
             model = col.models.by_name("AnkiPapers Basic")
@@ -1721,15 +1836,16 @@ def classify_note(lapses: int, tags: str, suspended: bool) -> Optional[str]:
 
 def note_review_stats(col, note_ids: List[int]) -> Dict[str, Dict[str, Any]]:
     """Per note: worst lapses, Again presses / reviews, ease, last review,
-    next due, suspended and status ('weak' / 'leech' / None). Keyed by the
-    note id as a string (JSON object keys)."""
+    next due, suspended and status ('weak' / 'leech' / None), plus how many
+    cards it has, how many are suspended, and each card's flag (0 = none).
+    Keyed by the note id as a string (JSON object keys)."""
     nids = sorted({int(n) for n in note_ids if n})
     if not nids:
         return {}
     nid_list = ",".join(str(n) for n in nids)
     today = col.sched.today
     cards = col.db.all(
-        f"select id, nid, lapses, factor, queue, type, due from cards where nid in ({nid_list})"
+        f"select id, nid, lapses, factor, queue, type, due, flags from cards where nid in ({nid_list})"
     )
     by_note: Dict[int, List[tuple]] = {}
     for row in cards:
@@ -1767,7 +1883,7 @@ def note_review_stats(col, note_ids: List[int]) -> Dict[str, Dict[str, Any]]:
         # from today, learning cards are due within the day, new cards wait.
         next_due: Optional[int] = None
         is_new = False
-        for _cid, _nid, _lapses, _factor, queue, _ctype, due in rows:
+        for _cid, _nid, _lapses, _factor, queue, _ctype, due, _flags in rows:
             if queue == 2 or queue == 3:
                 days = int(due) - today
             elif queue == 1:
@@ -1789,6 +1905,9 @@ def note_review_stats(col, note_ids: List[int]) -> Dict[str, Dict[str, Any]]:
             "next_due_days": next_due,
             "is_new": is_new and next_due is None,
             "suspended": suspended,
+            "cards": len(rows),
+            "suspended_cards": sum(1 for r in rows if r[4] == -1),
+            "flags": [(r[7] or 0) & 0b111 for r in rows],
         }
     return out
 

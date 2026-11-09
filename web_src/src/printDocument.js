@@ -23,6 +23,8 @@ import {
   tableSizeOf, stripTableSize, TABLE_SIZE_DEFAULT, BASIC_CARD_RE,
 } from './blockFormat'
 import { stripApBlockId } from './docLinks'
+import { stripQbankComments } from './qbankTags'
+import { stripFlagComments } from './cardFlags'
 import { findCodeBlocks, blockCodeText, highlightLines } from './codeBlocks'
 
 /** Width of one indent level in the printed document, in px. */
@@ -45,7 +47,7 @@ function indentLevelOf(line) {
 
 /** Everything the printed page should not show, removed before formatting. */
 function printableBody(line) {
-  return stripInlineTags(stripApBlockId(String(line ?? '')).trim())
+  return stripInlineTags(stripFlagComments(stripQbankComments(stripApBlockId(String(line ?? '')))).trim())
 }
 
 const esc = (s) => String(s ?? '')

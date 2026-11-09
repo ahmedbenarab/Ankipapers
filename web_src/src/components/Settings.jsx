@@ -116,12 +116,15 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
             ))}
           </div>
 
-          <label className="settings-label">Show Card Indicators</label>
+          <label className="settings-label">Card Type Badges</label>
+          <p className="settings-field-hint">
+            The Basic, Reversible and Cloze bubbles at the right edge of each card line.
+          </p>
           <label className="settings-toggle">
             <input type="checkbox" checked={local.show_card_indicators !== false}
               onChange={e => update('show_card_indicators', e.target.checked)} />
             <span className="toggle-slider" />
-            <span className="toggle-text">{local.show_card_indicators !== false ? 'Enabled' : 'Disabled'}</span>
+            <span className="toggle-text">{local.show_card_indicators !== false ? 'Shown' : 'Hidden'}</span>
           </label>
 
           <label className="settings-label">Weak-Spot Markers</label>
@@ -135,6 +138,41 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
             <span className="toggle-slider" />
             <span className="toggle-text">{local.weak_spot_markers !== false ? 'Enabled' : 'Disabled'}</span>
           </label>
+
+          <label className="settings-label">Card Counts</label>
+          <p className="settings-field-hint">
+            How many cards sit under each H1, H2 and H3, at the right edge of the heading.
+          </p>
+          <label className="settings-toggle">
+            <input type="checkbox" checked={local.show_heading_card_counts !== false}
+              onChange={e => update('show_heading_card_counts', e.target.checked)} />
+            <span className="toggle-slider" />
+            <span className="toggle-text">{local.show_heading_card_counts !== false ? 'Shown' : 'Hidden'}</span>
+          </label>
+
+          <label className="settings-label">Suspended Cards</label>
+          <p className="settings-field-hint">
+            Fades card lines that are suspended in Anki and marks them ⓢ (hover it for details);
+            a heading whose cards are all suspended says “All suspended”. Faded topics in the
+            Outline too.
+          </p>
+          <label className="settings-toggle">
+            <input type="checkbox" checked={local.show_suspended_cards !== false}
+              onChange={e => update('show_suspended_cards', e.target.checked)} />
+            <span className="toggle-slider" />
+            <span className="toggle-text">{local.show_suspended_cards !== false ? 'Shown' : 'Hidden'}</span>
+          </label>
+
+          <label className="settings-label">Suspended Card Opacity</label>
+          <p className="settings-field-hint">
+            How faded suspended lines look. Active lines always stay at 100%.
+          </p>
+          <div className="settings-range">
+            <input type="range" min={30} max={100} step={5}
+              value={local.suspended_card_opacity ?? 85}
+              onChange={e => update('suspended_card_opacity', Number(e.target.value))} />
+            <span className="settings-range-value">{Math.round(local.suspended_card_opacity ?? 85)}%</span>
+          </div>
 
           <label className="settings-label">Chapter Bar</label>
           <p className="settings-field-hint">
@@ -206,6 +244,16 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
               Solarized Styling
             </button>
           </div>
+
+          <label className="settings-label">Question Tag Prefix</label>
+          <p className="settings-field-hint">
+            Type uw3252 at the end of a heading (then Space or Return) and every card under it
+            is tagged {(local.qbank_tag_prefix || 'UWorldABIM')}::3252 at Generate. A paper or
+            folder can use its own prefix: right-click it in the sidebar.
+          </p>
+          <input className="modal-input" value={local.qbank_tag_prefix ?? 'UWorldABIM'}
+            placeholder="UWorldABIM"
+            onChange={e => update('qbank_tag_prefix', e.target.value.trim().replace(/\s+/g, '_'))} />
 
           <label className="settings-label">When Anki note differs from paper</label>
           <p className="settings-field-hint">
