@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Settings as SettingsIcon, Save, Sun, Moon, HardDrive, Palette, PenLine, Layers, BookOpen, Sparkles, Keyboard } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Sun, Moon, HardDrive, Palette, PenLine, Layers, BookOpen, Sparkles, Keyboard, Plus, X, ArrowRight } from 'lucide-react'
 import { exportPapersToDisk } from '../bridge'
 import SettingsAI from './SettingsAI'
+import { DEFAULT_SHORTCUTS, shortcutTableProblem, rowsToSave, cleanTag } from '../qbankTags'
 
 const IS_MAC = typeof navigator !== 'undefined' &&
   /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '')
@@ -35,6 +36,20 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
   // On a narrow window the tabs are one row that scrolls; keep the chosen
   // one in view.
   const tabsRef = useRef(null)
+
+  // ── Tag Shortcuts (Cards tab; qbankTags.js, core/qbank.py) ─────────────
+  // Each row remembers which saved row it started as (_key), so a renamed
+  // tag can be recorded as the row's earlier name when Settings is saved.
+  const savedShortcuts = Array.isArray(settings?.tag_shortcuts) ? settings.tag_shortcuts : DEFAULT_SHORTCUTS
+  const [shortcutRows, setShortcutRows] = useState(() => savedShortcuts.map((r, i) => ({ ...r, _key: i })))
+  const shortcutProblem = shortcutTableProblem(shortcutRows)
+  const editShortcut = (i, field, value) =>
+    setShortcutRows((rows) => rows.map((r, j) => (j === i ? { ...r, [field]: value } : r)))
+  const save = () => {
+    if (shortcutProblem) { setTab('cards'); return }
+    onSave({ ...local, tag_shortcuts: rowsToSave(shortcutRows, savedShortcuts) })
+    onClose()
+  }
   useEffect(() => {
     tabsRef.current?.querySelector('.settings-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [tab])
@@ -255,15 +270,52 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
                 </button>
               </div>
 
-              <label className="settings-label">Question Tag Prefix</label>
+              <label className="settings-label">Tag Shortcuts</label>
               <p className="settings-field-hint">
-                Type uw3252 at the end of a heading (then Space or Return) and every card under it
-                is tagged {(local.qbank_tag_prefix || 'UWorldABIM')}::3252 when added to Anki. A
-                paper or folder can use its own prefix: right-click it in the sidebar.
+                Type a shortcut, two colons and an id at the end of a heading or card line, then Space
+                or Return: uw::3252 tags that line's cards and every card under it with the
+                shortcut's tag and the id, such as UWorldABIM::3252. Each shortcut and each tag can be
+                used only once. A paper or folder can give a shortcut its own tag: right-click it in
+                the sidebar.
               </p>
-              <input className="modal-input" value={local.qbank_tag_prefix ?? 'UWorldABIM'}
-                placeholder="UWorldABIM"
-                onChange={e => update('qbank_tag_prefix', e.target.value.trim().replace(/\s+/g, '_'))} />
+              <div className="tag-shortcuts" role="table" aria-label="Tag Shortcuts">
+                <div className="tag-shortcuts-head" role="row">
+                  <span role="columnheader">Shortcut</span>
+                  <span />
+                  <span role="columnheader">Tag</span>
+                  <span />
+                </div>
+                {shortcutRows.map((r, i) => {
+                  const sc = String(r.shortcut || '').trim()
+                  const tag = cleanTag(r.tag)
+                  return (
+                    <div className="tag-shortcuts-row" role="row" key={r._key ?? `new-${i}`}>
+                      <input className="modal-input tag-shortcuts-key" value={r.shortcut ?? ''} placeholder={i === 0 ? 'uw' : 'ab'}
+                        aria-label={`Shortcut ${i + 1}`} spellCheck={false} autoCapitalize="off"
+                        onChange={(e) => editShortcut(i, 'shortcut', e.target.value.replace(/\s+/g, ''))} />
+                      <ArrowRight size={14} className="tag-shortcuts-arrow" aria-hidden="true" />
+                      <input className="modal-input" value={r.tag ?? ''} placeholder={i === 0 ? 'UWorldABIM' : 'AMBOSS'}
+                        aria-label={`Tag for shortcut ${i + 1}`} spellCheck={false} autoCapitalize="off"
+                        onChange={(e) => editShortcut(i, 'tag', e.target.value)} />
+                      <button type="button" className="tag-shortcuts-remove" title="Remove this shortcut"
+                        aria-label={`Remove shortcut ${sc || i + 1}`}
+                        onClick={() => setShortcutRows((rows) => rows.filter((_, j) => j !== i))}>
+                        <X size={14} />
+                      </button>
+                      {sc && tag && (
+                        <span className="tag-shortcuts-example">
+                          {sc}::3252 <ArrowRight size={11} aria-hidden="true" /> {tag}::3252
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+                <button type="button" className="modal-btn tag-shortcuts-add"
+                  onClick={() => setShortcutRows((rows) => [...rows, { shortcut: '', tag: '', old: [] }])}>
+                  <Plus size={14} /> Add shortcut
+                </button>
+                {shortcutProblem && <p className="tag-shortcuts-problem" role="alert">{shortcutProblem}</p>}
+              </div>
 
               <label className="settings-label">When Anki note differs from paper</label>
               <p className="settings-field-hint">
@@ -409,7 +461,8 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
 
         <div className="modal-actions">
           <button className="modal-btn" onClick={onClose}>Cancel</button>
-          <button className="modal-btn primary" onClick={() => { onSave(local); onClose() }}>
+          <button className="modal-btn primary" onClick={save}
+            title={shortcutProblem ? `Fix the Tag Shortcuts first: ${shortcutProblem}` : undefined}>
             <Save size={14} /> Save Settings
           </button>
         </div>

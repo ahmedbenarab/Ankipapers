@@ -1,12 +1,16 @@
-"""Anki flags from a heading: <!--flag:red--> flags every card under it.
+"""Anki flags from a line: <!--flag:red--> flags its card and every card under it.
 
-A heading carries one flag in a hidden comment, written flush after its text
-like the question ids (core/qbank.py):
+Any line of text -- a heading, a card, a bullet -- carries one flag in a
+hidden comment, written flush after its text like the question ids
+(core/qbank.py):
 
     ## Aortic stenosis<!--flag:red-->
+        Pulsus parvus et tardus >> AS<!--flag:blue-->
 
-At Generate every card the heading folds over gets that flag in Anki. A card
-holds one flag, so when flagged headings nest, the nearest one wins.
+At Generate the line's own card, and every card it folds over, gets that
+flag in Anki. A card holds one flag, so the nearest flag wins: a card's own
+line first, then its parents nearest first (the blue card above stays blue
+under the red heading).
 
 The paper and Anki can both change a flag, so Generate goes by what it last
 set on each card (CardReference.flag_applied), and the paper wins only when
@@ -65,7 +69,7 @@ def inherited_flag(lines: List[str], index: int, code_lines: Optional[Dict] = No
     """(flag, line it comes from) for the card on lines[index]; (0, None) if none.
 
     The card's own line first, then its parents nearest first, found the way
-    folding and core/qbank.inherited_qbank_ids find them.
+    folding and core/qbank.inherited_tag_marks find them.
     """
     code_lines = code_lines or {}
     own = flag_in(lines[index])

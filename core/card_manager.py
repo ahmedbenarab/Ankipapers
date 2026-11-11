@@ -21,7 +21,7 @@ from .parser import (
     AP_LINK_RE,
     CODE_RE,
 )
-from .qbank import DEFAULT_PREFIX, qbank_tags, sync_qbank_tags
+from .qbank import DEFAULT_PREFIX, DEFAULT_SHORTCUT, question_tags, sync_question_tags, unknown_mark_lines
 from .flags import note_card_flags, set_flag, strip_flag_comments
 
 
@@ -1531,17 +1531,22 @@ def generate_cards(
     anki_edit_conflict: str = "preserve",
     card_style: str = "basic",
     color_scheme: str = "carolina",
-    qbank_prefix: str = DEFAULT_PREFIX,
+    tag_table: Optional[Dict[str, str]] = None,
+    tag_heads: Optional[List[str]] = None,
     report: Optional[Dict[str, Any]] = None,
 ) -> Tuple[int, int, int]:
     """
     Generate/update Anki cards from a paper.
 
-    qbank_prefix: the tag group question ids go under ("UWorldABIM" gives
-        UWorldABIM::3252); see core/qbank.py.
+    tag_table: the Tag Shortcuts in force for this paper, shortcut -> tag
+        ({"uw": "UWorldABIM"} turns uw::3252 into UWorldABIM::3252), and
+    tag_heads: every tag name whose question tags Generate keeps in step
+        (the table's, and earlier names after a rename); see core/qbank.py.
     report: when given, filled with "flags_changed" (notes whose flag was
-        set or cleared) and "unflagged_headings" (headings whose flag comment
-        came off because every card under them was cleared in Anki).
+        set or cleared), "unflagged_headings" (lines whose flag comment came
+        off because every card they flag was cleared in Anki; the key keeps its
+        old name) and "unknown_tag_lines" (lines with a uw::-style mark whose
+        shortcut isn't in the table, so it tagged nothing).
 
     anki_edit_conflict:
         preserve — if the paper line is unchanged but Anki was edited, leave Anki as-is.
@@ -1580,6 +1585,15 @@ def generate_cards(
     report.setdefault("flags_changed", 0)
     report.setdefault("unflagged_headings", [])
 
+    # Question tags (core/qbank.py): uw::3252 is looked up in the Tag
+    # Shortcuts; a shortcut that isn't there tags nothing, and its lines are
+    # named in the report.
+    if tag_table is None:
+        tag_table = {DEFAULT_SHORTCUT: DEFAULT_PREFIX}
+    if tag_heads is None:
+        tag_heads = list(tag_table.values())
+    report["unknown_tag_lines"] = [_line_label(line) for _i, line in unknown_mark_lines(paper.content, tag_table)]
+
     # Flags cleared in Anki on every card under a heading take the heading's
     # <!--flag:...--> off too, before anything else reads the paper (see
     # core/flags.py). Clearing them was done in Anki, not in the paper, so
@@ -1590,7 +1604,7 @@ def generate_cards(
     if cleared:
         lines = paper.content.split("\n")
         for line_index in cleared:
-            report["unflagged_headings"].append(_heading_label(lines[line_index]))
+            report["unflagged_headings"].append(_line_label(lines[line_index]))
             lines[line_index] = strip_flag_comments(lines[line_index])
         paper.content = "\n".join(lines)
         cards = extract_cards(paper.content)
@@ -1651,8 +1665,8 @@ def generate_cards(
                 # heading changes no card's text or context. So they are
                 # brought in line on every pass, and saved below on their own
                 # if nothing else rewrites the note.
-                note.tags, qbank_changed = sync_qbank_tags(
-                    list(note.tags), card.qbank_ids or [], qbank_prefix)
+                note.tags, qbank_changed = sync_question_tags(
+                    list(note.tags), question_tags(card.tag_marks or [], tag_table), tag_heads)
                 saved = False
                 bid = card.block_id or existing_ref.block_id
                 derived = derived_hash_for(card, paper)
@@ -1741,7 +1755,7 @@ def generate_cards(
         if reused:
             continue
 
-        note_id = _create_note(col, card, paper, deck_id, qbank_prefix)
+        note_id = _create_note(col, card, paper, deck_id, tag_table)
         if note_id:
             bid = card.block_id or str(uuid.uuid4())
             if bid in used_block_ids:
@@ -1808,9 +1822,10 @@ def _sync_flag(col, note_id: int, wanted: int, last: int, report: Dict[str, Any]
 
 def _headings_cleared_in_anki(col, cards: List[ParsedCard],
                               refs_by_block_id: Dict[str, CardReference]) -> Dict[int, List[str]]:
-    """Flagged headings whose flag was cleared in Anki on every card under them.
+    """Flagged lines whose flag was cleared in Anki on every card they flag.
 
-    {heading line: block ids of its cards}. A heading qualifies only when
+    {flagged line: block ids of its cards}. The line is a heading, a card's
+    own line, or any line with cards under it. It qualifies only when
     Generate had already set its flag on all of its cards (so a heading
     flagged since the last Generate is never mistaken for a cleared one) and
     no card of any of their notes still shows that flag.
@@ -1831,9 +1846,10 @@ def _headings_cleared_in_anki(col, cards: List[ParsedCard],
     return cleared
 
 
-def _heading_label(line: str) -> str:
-    """A heading line as plain words, for the note shown after Generate."""
-    return re.sub(r"<!--.*?-->", "", re.sub(r"^\s*#{1,6}\s*", "", line)).strip()
+def _line_label(line: str) -> str:
+    """A heading or card line as plain words, for the note shown after Generate."""
+    text = re.sub(r"<!--.*?-->", "", re.sub(r"^\s*(?:#{1,6}|[-*])\s+", "", line.strip())).strip()
+    return text if len(text) <= 60 else text[:57].rstrip() + "..."
 
 
 def _save_note(col, note) -> bool:
@@ -1850,7 +1866,7 @@ def _save_note(col, note) -> bool:
 
 
 def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int,
-                 qbank_prefix: str = DEFAULT_PREFIX) -> Optional[int]:
+                 tag_table: Optional[Dict[str, str]] = None) -> Optional[int]:
     """Create a single Anki note from a ParsedCard."""
     try:
         context = _card_context(card, paper)
@@ -1869,8 +1885,8 @@ def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int,
             for itag in card.inline_tags:
                 tags.append(f"AnkiPapers::{itag}")
 
-        # Question ids from the headings above it (core/qbank.py)
-        tags.extend(qbank_tags(card.qbank_ids or [], qbank_prefix))
+        # Question tags from its own line and the lines above it (core/qbank.py)
+        tags.extend(question_tags(card.tag_marks or [], tag_table or {DEFAULT_SHORTCUT: DEFAULT_PREFIX}))
 
         if card.card_type == "basic":
             model = col.models.by_name("AnkiPapers Basic")

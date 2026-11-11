@@ -662,17 +662,11 @@ body.is-sidebar-snapping .sidebar-resizer { background: var(--orange); }
   border-right-color: var(--line-flag);
   box-shadow: inset -2px 0 0 var(--line-flag);
 }
-/* A card's own Anki flag, and ⓢ for suspended cards, beside its badge. */
-.card-anki-flag { display: flex; align-items: center; font-style: normal; }
-.suspended-mark {
-  font-style: normal; font-size: 14px; line-height: 1; color: var(--text-muted);
-  cursor: help; position: relative;
-}
-/* Hover bubbles for ⓢ and a heading's card count. Beside the mark, not
-   under it: each editor row clips what spills past its edges
-   (.block-row-inner), so a bubble below would be cut off. */
+/* Hover bubbles for a card capsule's compartments and a heading's card
+   count. Beside the mark, not under it: each editor row clips what spills
+   past its edges (.block-row-inner), so a bubble below would be cut off. */
 .heading-count { position: relative; cursor: help; }
-.suspended-mark:hover::after,
+.card-meta-seg:hover::after,
 .heading-count:hover::after {
   content: attr(data-tip); position: absolute; right: calc(100% + 8px); top: 50%;
   transform: translateY(-50%); z-index: 30; width: max-content; white-space: nowrap;
@@ -680,9 +674,9 @@ body.is-sidebar-snapping .sidebar-resizer { background: var(--orange); }
   font: 400 11.5px/1.4 var(--font-sans); letter-spacing: 0; padding: 6px 9px; border-radius: 6px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
-/* Suspended card lines fade (Settings → Suspended Card Opacity); the badge
-   corner stays at full strength so ⓢ is easy to find. */
-.block-row-wrapper.is-suspended :is(.block-card, .block-cloze-wrapper) > :not(.block-card-type) {
+/* Suspended card lines fade (Settings → Suspended Card Opacity); the
+   capsule stays at full strength so ⓢ is easy to find. */
+.block-row-wrapper.is-suspended :is(.block-card, .block-cloze-wrapper) > :not(.card-meta-side) {
   opacity: var(--suspended-opacity, 0.85);
 }
 /* H1–H3: card count and suspended summary at the right edge. */
@@ -1242,47 +1236,60 @@ textarea.block-input.block-input-textarea {
 .block-list-item strong { color: var(--text-primary); font-weight: 700; }
 .block-list-item code { background: var(--code-bg); color: #e17055; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px; }
 
-/* Card blocks */
-.block-card {
-  background: transparent; border: none;
-  border-radius: 0; padding: 2px 80px 2px 4px; /* Added 80px right padding so text doesn't overlap the badge */
-  margin: 0; position: relative;
+/* Card blocks. The text and the card's capsule sit side by side, so the
+   text wraps before the capsule however many compartments it has. */
+.block-card,
+.block-cloze-wrapper {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: transparent; border: none; border-radius: 0;
+  padding: 2px 4px; margin: 0; position: relative;
 }
-.block-card-basic { border-left: none; }
-.block-card-reversible { border-left: none; }
-
-.block-card-type {
-  position: absolute;
-  right: 4px;
-  top: 2px;
-  /* Pins the badge to the top right of the line */
-  margin-bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  /* Space between the bubble and the external link icon */
+.block-card-body,
+.block-cloze-wrapper > .block-cloze { flex: 1; min-width: 0; }
+.card-meta-side {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  margin-top: 1px; margin-left: auto;
 }
 
-/* New rule to style the text as a bubble */
-.block-card-type span {
-  background: var(--bg-hover);
-  color: var(--accent);
-  border: 1px solid var(--accent-glow);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+/* The capsule: lapses | flag | ⓢ | N̸ | type, divided by thin rules. Its
+   outline is a light tint of the color scheme; each compartment keeps its
+   own meaning's color. Hover bubbles open to the left, beside it, because
+   each editor row clips what spills past its top and bottom. */
+.card-meta {
+  display: inline-flex; align-items: stretch; height: 20px;
+  border: 1px solid rgba(var(--tint-rgb), 0.32); border-radius: 11px;
+  background: rgba(var(--tint-rgb), 0.05);
 }
-/* Settings → Card Type Badges off: no bubble. A weak-spot pill and the
-   "open in Anki" button, which share the corner, stay. */
-.block-editor.hide-card-badges .block-card-type > span { display: none; }
+.card-meta-seg {
+  position: relative; display: flex; align-items: center; gap: 3px;
+  padding: 0 7px; cursor: help;
+  font: 700 10px var(--font-sans); color: var(--text-secondary); white-space: nowrap;
+}
+.card-meta-seg + .card-meta-seg { border-left: 1px solid rgba(var(--tint-rgb), 0.28); }
+.card-meta-seg:first-child { border-radius: 10px 0 0 10px; }
+.card-meta-seg:last-child { border-radius: 0 10px 10px 0; }
+.card-meta-seg:only-child { border-radius: 10px; }
+.card-meta-lapses { background: var(--weak-pill-bg); color: var(--weak-pill-fg); }
+.card-meta-lapses.is-leech { background: var(--leech-pill-bg); color: var(--leech-pill-fg); }
+.card-meta-sus { font-size: 13px; font-weight: 400; line-height: 1; color: var(--text-muted); }
+/* N̸: an N with a diagonal stroke through it. */
+.card-meta-nh { position: relative; font-size: 10.5px; font-weight: 800; line-height: 1; padding: 0 1px; }
+.card-meta-nh::after {
+  content: ''; position: absolute; left: -2px; right: -2px; top: 50%;
+  border-top: 1.5px solid currentColor; transform: rotate(-55deg);
+}
+.card-meta-type { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; }
+.card-meta-type.is-basic { color: var(--green-light); background: rgba(130, 224, 170, 0.12); }
+[data-theme="light"] .card-meta-type.is-basic { color: #228B22; background: rgba(34, 139, 34, 0.12); }
+.card-meta-type.is-reversible { color: var(--reversible); background: rgba(var(--reversible-rgb), 0.12); }
+[data-theme="light"] .card-meta-type.is-reversible { background: rgba(var(--reversible-rgb), 0.10); }
+.card-meta-type.is-cloze { color: var(--pink); background: rgba(var(--pink-rgb), 0.12); }
 .block-card-browser-btn {
   background: transparent; border: none; color: var(--text-muted);
   cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center;
   transition: all 0.2s;
 }
-.block-card-browser-btn:hover { background: var(--accent); color: white; }
+.block-card-browser-btn:hover { background: var(--accent); color: var(--on-accent); }
 
 .block-card-front,
 .block-card-back {
@@ -1312,25 +1319,6 @@ textarea.block-input.block-input-textarea {
   border-top: none;
   /* Removed the horizontal dashed line */
   margin-left: 8px;
-}
-
-.block-cloze-wrapper {
-  background: transparent;
-  border-left: none;
-  padding: 2px 80px 2px 4px;
-  /* Added 80px right padding to prevent overlap */
-  border-radius: 0;
-    /* Synced border-radius */
-    margin: 0;
-    /* Removed the 10px top/bottom margin */
-  position: relative;
-}
-
-/* Styles the new CLOZE bubble to match your pink cloze theme */
-.block-card-type.cloze-type span {
-  color: var(--pink);
-  background: rgba(var(--pink-rgb), 0.12);
-  border-color: rgba(var(--pink-rgb), 0.3);
 }
 
 .block-cloze-browser-btn {
@@ -1870,6 +1858,39 @@ textarea.block-input.block-input-textarea {
   font-size: 11px; color: var(--text-muted); line-height: 1.4; margin: 0 0 8px 0;
 }
 
+/* Settings -> Cards -> Tag Shortcuts: shortcut -> tag, one row each. */
+.tag-shortcuts { margin-bottom: 16px; }
+.tag-shortcuts-head,
+.tag-shortcuts-row {
+  display: grid; grid-template-columns: 96px 14px minmax(0, 1fr) 28px;
+  align-items: center; column-gap: 8px;
+}
+.tag-shortcuts-head {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 4px;
+}
+.tag-shortcuts-row { row-gap: 2px; margin-bottom: 8px; }
+.tag-shortcuts-row .modal-input { margin-bottom: 0; padding: 6px 10px; font-family: var(--font-mono, monospace); font-size: 13px; }
+.tag-shortcuts-arrow { color: var(--text-muted); }
+.tag-shortcuts-remove {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+  color: var(--text-muted); cursor: pointer; transition: all var(--transition);
+}
+.tag-shortcuts-remove:hover { color: var(--red); border-color: var(--border); background: var(--bg-hover); }
+.tag-shortcuts-example {
+  grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-muted); font-family: var(--font-mono, monospace);
+}
+.tag-shortcuts-add { margin-top: 2px; padding: 5px 12px; }
+.tag-shortcuts-problem { margin: 8px 0 0 0; font-size: 12px; color: var(--red); line-height: 1.4; }
+.tag-overrides-modal { width: 460px; max-width: 94vw; }
+.tag-overrides-modal .tag-shortcuts { margin-bottom: 12px; }
+.tag-overrides-key {
+  font-family: var(--font-mono, monospace); font-size: 13px; color: var(--text-primary);
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-tertiary);
+}
+
 .generate-conflict-modal { max-width: 480px; }
 .generate-conflict-intro { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 12px 0; }
 .generate-conflict-list {
@@ -2283,40 +2304,6 @@ textarea.block-input.block-input-textarea {
   color: var(--reversible);
 }
 
-/* ── BASIC CARD BUBBLE ── */
-
-/* Dark Mode (Default): Light Green */
-.block-card-basic .block-card-type span {
-  color: var(--green-light);
-  background: rgba(130, 224, 170, 0.12);
-  /* Faint tint of green-light */
-  border-color: rgba(130, 224, 170, 0.3);
-}
-
-/* Light Mode: Forest Green */
-[data-theme="light"] .block-card-basic .block-card-type span {
-  color: #228B22;
-  background: rgba(34, 139, 34, 0.12);
-  /* Faint tint of Forest Green */
-  border-color: rgba(34, 139, 34, 0.3);
-}
-
-/* ── REVERSIBLE CARD BUBBLE ── */
-
-/* Dark Mode (Default): amber */
-.block-card-reversible .block-card-type span {
-  color: var(--reversible);
-  background: rgba(var(--reversible-rgb), 0.12);
-  border-color: rgba(var(--reversible-rgb), 0.3);
-}
-
-/* Light Mode: deep amber */
-[data-theme="light"] .block-card-reversible .block-card-type span {
-  color: var(--reversible);
-  background: rgba(var(--reversible-rgb), 0.10);
-  border-color: rgba(var(--reversible-rgb), 0.3);
-}
-
 /* ─── Context / Heading ─────────────────────────── */
 /* Add to the bottom of global.css */
 .ap-meta-heading,
@@ -2710,13 +2697,6 @@ sub, sup { line-height: 0; }
 .block-row { scroll-margin-top: 16px; }
 .block-row.block-row-weak { box-shadow: inset 3px 0 0 var(--weak); background: var(--weak-bg); }
 .block-row.block-row-leech { box-shadow: inset 3px 0 0 var(--leech); background: var(--leech-bg); }
-.block-card.has-weak, .block-cloze-wrapper.has-weak { padding-right: 200px; }
-.block-card-type .weak-pill {
-  font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
-  border-radius: 999px; padding: 1px 8px; margin-right: 6px; white-space: nowrap;
-  background: var(--weak-pill-bg); color: var(--weak-pill-fg);
-}
-.block-card-type .weak-pill.is-leech { background: var(--leech-pill-bg); color: var(--leech-pill-fg); }
 
 /* Bottom bar: "N weak spots" filters the paper down to them */
 .bottom-center { display: flex; align-items: center; gap: 10px; min-width: 0; }

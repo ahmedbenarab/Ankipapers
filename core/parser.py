@@ -31,7 +31,7 @@ except ImportError:
     code_block_crumb_html, code_line_map = _cb.code_block_crumb_html, _cb.code_line_map
 
 try:
-    from .qbank import inherited_qbank_ids, strip_qbank_comments
+    from .qbank import inherited_tag_marks, strip_tag_marks
     from .flags import inherited_flag, strip_flag_comments
 except ImportError:
     # Same single-file fallback as code_blocks above.
@@ -47,7 +47,7 @@ except ImportError:
         return mod
 
     _qb, _fl = _load("qbank"), _load("flags")
-    inherited_qbank_ids, strip_qbank_comments = _qb.inherited_qbank_ids, _qb.strip_qbank_comments
+    inherited_tag_marks, strip_tag_marks = _qb.inherited_tag_marks, _qb.strip_tag_marks
     inherited_flag, strip_flag_comments = _fl.inherited_flag, _fl.strip_flag_comments
 
 
@@ -65,7 +65,7 @@ class ParsedCard:
     block_id: Optional[str] = None  # stable id from <!--ap:uuid--> suffix
     supplement: str = ""
     inline_tags: List[str] = None  # Add this to store our [[tags]]
-    qbank_ids: List[str] = None  # <!--uw:...--> ids from this line and its parents (core/qbank.py)
+    tag_marks: List[str] = None  # "uw::3252" marks from this line and its parents (core/qbank.py)
     flag: int = 0  # Anki flag from the nearest <!--flag:...--> (core/flags.py)
     flag_line: Optional[int] = None  # the line that flag comes from
     
@@ -275,7 +275,7 @@ def parse_line(index: int, line: str) -> ParsedLine:
 
     card_content, stable_block_id = split_stable_block_id(card_content)
     # Question-bank ids and flags are for Anki, never card text (core/qbank.py, core/flags.py).
-    card_content = strip_flag_comments(strip_qbank_comments(card_content))
+    card_content = strip_flag_comments(strip_tag_marks(card_content))
 
     # If the line is meant to be a Supplement (&&), treat it as plain text 
     # so it bypasses the card-creation regex below.
@@ -473,7 +473,7 @@ def extract_cards(content: str) -> List[ParsedCard]:
     cards = []
     for i, line in enumerate(parsed_lines):
         if line.card and line.card.is_valid:
-            line.card.qbank_ids = inherited_qbank_ids(raw_lines, i, code_lines)
+            line.card.tag_marks = inherited_tag_marks(raw_lines, i, code_lines)
             line.card.flag, line.card.flag_line = inherited_flag(raw_lines, i, code_lines)
             supplement_texts = []
             card_indent = line.indent_level
@@ -557,7 +557,7 @@ def render_breadcrumb_crumb(text: str) -> str:
 
 
 def _strip_breadcrumb_tags(text: str) -> str:
-    """Remove [[tags]], <!--uw:...--> ids and <!--flag:...--> from a breadcrumb line.
+    """Remove [[tags]], <!--uw::...--> tag marks and <!--flag:...--> from a breadcrumb line.
 
     A tag such as [[NH]] is an instruction to Anki Papers, not something the
     author wrote to read back. It already does its job by tagging the card, so
@@ -565,7 +565,7 @@ def _strip_breadcrumb_tags(text: str) -> str:
     Everything else on the line is kept exactly as written -- that text is the
     context the breadcrumb exists to show.
     """
-    cleaned = INLINE_TAG_PATTERN.sub(" ", strip_flag_comments(strip_qbank_comments(text)))
+    cleaned = INLINE_TAG_PATTERN.sub(" ", strip_flag_comments(strip_tag_marks(text)))
     return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 

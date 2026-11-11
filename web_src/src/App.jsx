@@ -6,7 +6,6 @@ import {
   pickImage, pasteImage, exportPdf, exportMarkdown, importMarkdown, getSettings, saveSettings as saveSettingsBridge,
   getMediaDir, getTextReplacements, convertEmphasisToTags, openInBrowser, moveCardsToDeck, saveSourceLink, loadSourceLink, openUrl,
   getNoteStats, unsuspendNote, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
-  getQbankPrefix, setFolderQbankPrefix,
 } from './bridge'
 import { buildOutline } from './outline'
 import { buildCardRefIndex, resolveNoteIdFromIndex } from './crossLink'
@@ -27,6 +26,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import Toast from './components/Toast'
 import Settings from './components/Settings'
 import GuideWindow from './components/GuideWindow'
+import TagShortcutsDialog from './components/TagShortcutsDialog'
 import GenerateConflictModal from './components/GenerateConflictModal'
 import FolderGenerateDialog from './components/FolderGenerateDialog'
 import TableDialog from './components/TableDialog'
@@ -987,6 +987,7 @@ export default function App() {
 
   const handleSaveSettings = useCallback(async (newSettings) => {
     const res = await saveSettingsBridge(newSettings)
+    if (res?.error) { showToast(`Settings not saved: ${res.error}`, 'error'); return }
     setSettings(newSettings)
     document.documentElement.dataset.theme = newSettings.editor_theme || 'dark'
     document.documentElement.dataset.scheme = newSettings.color_scheme || 'carolina'
@@ -1167,13 +1168,19 @@ export default function App() {
       if (result.updated) parts.push(`${result.updated} updated`)
       if (result.deleted) parts.push(`${result.deleted} removed`)
       if (result.flags_changed) parts.push(`${result.flags_changed} flagged or unflagged`)
-      // Headings whose <!--flag:...--> came off because every card under them
-      // was unflagged in Anki (core/flags.py).
+      // Lines (headings or cards) whose <!--flag:...--> came off because every
+      // card they flag was unflagged in Anki (core/flags.py).
       const unflagged = result.unflagged_headings || []
       if (unflagged.length) {
-        parts.push(`flag removed from ${unflagged.length === 1 ? `“${unflagged[0]}”` : `${unflagged.length} headings`} (cleared in Anki)`)
+        parts.push(`flag removed from ${unflagged.length === 1 ? `“${unflagged[0]}”` : `${unflagged.length} lines`} (cleared in Anki)`)
       }
-      showToast(parts.join(', '), 'success')
+      // Lines with a uw::-style mark whose shortcut isn't in Settings ->
+      // Cards -> Tag Shortcuts: they tagged nothing (core/qbank.py).
+      const unknown = result.unknown_tag_lines || []
+      if (unknown.length) {
+        parts.push(`${unknown.length === 1 ? `“${unknown[0]}” uses a tag shortcut` : `${unknown.length} lines use tag shortcuts`} not in Settings, so ${unknown.length === 1 ? 'it was' : 'they were'} not tagged`)
+      }
+      showToast(parts.join(', '), unknown.length ? 'error' : 'success')
     } catch (e) {
       showToast(`Adding cards to Anki failed: ${e?.message || e}`, 'error')
     } finally {
@@ -1309,7 +1316,7 @@ export default function App() {
 
   const runFolderGenerate = useCallback(async (folder, policy) => {
     const list = folderGenPapersRef.current
-    const totals = { created: 0, updated: 0, deleted: 0, flagsChanged: 0, unflagged: 0 }
+    const totals = { created: 0, updated: 0, deleted: 0, flagsChanged: 0, unflagged: 0, unknownTags: 0 }
     const failures = []
     setBusy(true, 'generating')
     try {
@@ -1330,6 +1337,7 @@ export default function App() {
             totals.deleted += res?.deleted || 0
             totals.flagsChanged += res?.flags_changed || 0
             totals.unflagged += (res?.unflagged_headings || []).length
+            totals.unknownTags += (res?.unknown_tag_lines || []).length
           }
         } catch (e) {
           failures.push({ id: p.id, title, reason: e?.message || String(e) })
@@ -1427,32 +1435,10 @@ export default function App() {
   }, [persistPaper])
 
   // ─── Question-tag prefix (sidebar right-click on a paper or folder) ───
-  // A heading's <!--uw:3252--> ids tag its cards "<prefix>::3252"; the
-  // prefix is the paper's, else the nearest folder's, else Settings'
-  // (core/qbank.py). Empty clears this level's own prefix.
-  const handleQbankPrefix = useCallback(async (target) => {
-    const isPaper = target.type === 'paper'
-    const info = await getQbankPrefix(isPaper ? { paper_id: target.id } : { folder_path: target.path })
-    if (!info || info.error) { showToast(info?.error || 'Could not read the prefix', 'error'); return }
-    const answer = window.prompt(
-      `Question tag prefix for “${target.name}”: cards under a heading with uw3252 get <prefix>::3252.\n`
-      + `Leave empty to use “${info.inherited}”.`, info.own || '')
-    if (answer == null) return
-    const prefix = answer.trim().replace(/\s+/g, '_').replace(/^:+|:+$/g, '')
-    let r
-    if (!isPaper) {
-      r = await setFolderQbankPrefix(target.path, prefix)
-    } else if (paperRef.current?.id === target.id) {
-      const next = { ...paperRef.current, qbank_prefix: prefix }
-      setPaper(next)
-      r = await persistPaper(next)
-    } else {
-      const p = await loadPaper(target.id)
-      r = p ? await savePaper({ ...p, qbank_prefix: prefix }) : { error: 'Paper not found' }
-    }
-    if (r?.error) showToast(r.error, 'error')
-    else showToast(`Question tags: ${prefix || info.inherited}::<id>, applied at the next Generate`, 'success')
-  }, [persistPaper])
+  // Right-click a paper or folder -> "Tag shortcuts…": its own tags for the
+  // Tag Shortcuts (TagShortcutsDialog, core/qbank.py).
+  const [tagOverridesTarget, setTagOverridesTarget] = useState(null)
+
   const activeSourceKey = paper ? activeSourceKeys[paper.id] : null
   const selectSource = useCallback((key) => {
     const pid = paperRef.current?.id
@@ -1794,7 +1780,7 @@ export default function App() {
         onRenameFolder={handleRenameFolder}
         onGenerateFolder={handleGenerateFolder}
         onShareFolder={handleShareFolder}
-        onQbankPrefix={handleQbankPrefix}
+        onQbankPrefix={setTagOverridesTarget}
         onMoveFolder={handleMoveFolder}
         collapsed={sidebarCollapsed}
         width={sidebarWidth}
@@ -1992,6 +1978,10 @@ export default function App() {
       {showGuide && (
         <GuideWindow topic={guideTopic} onTopicChange={setGuideTopic} onClose={() => setShowGuide(false)}
           onOpenSettings={() => { setShowGuide(false); setSettingsSection('files'); setShowSettings(true) }} />
+      )}
+      {tagOverridesTarget && (
+        <TagShortcutsDialog target={tagOverridesTarget} onClose={() => setTagOverridesTarget(null)}
+          onSaved={() => showToast(`Tag shortcuts for “${tagOverridesTarget.name}” saved: applied at the next Add to Anki`, 'success')} />
       )}
       {showSettings && <Settings settings={settings} onSave={handleSaveSettings} onClose={() => { setShowSettings(false); setSettingsSection(null) }}
         initialSection={settingsSection}

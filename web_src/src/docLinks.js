@@ -20,7 +20,7 @@
  * still resolves.
  */
 
-import { stripQbankComments } from './qbankTags.js'
+import { stripTagMarks } from './qbankTags.js'
 import { stripFlagComments } from './cardFlags.js'
 
 // Hidden stable-id suffix on a line: "<!--ap:uuid-->" at end of line.
@@ -250,7 +250,7 @@ export function buildTargetIndex(papers) {
     const lines = String(paper.content || '').split('\n')
     const stack = [] // [{ level, text }]
     lines.forEach((raw, lineIndex) => {
-      const m = stripFlagComments(stripQbankComments(stripApBlockId(raw))).trim().match(HEADER_RE)
+      const m = stripFlagComments(stripTagMarks(stripApBlockId(raw))).trim().match(HEADER_RE)
       if (!m) return
       const level = m[1].length
       // A header can itself contain a link now; show its phrase, not markdown.
@@ -321,7 +321,7 @@ export function headerTextAt(content, lineIndex) {
   const lines = String(content || '').split('\n')
   const raw = lines[lineIndex]
   if (raw == null) return ''
-  const t = stripFlagComments(stripQbankComments(stripApBlockId(raw))).trim()
+  const t = stripFlagComments(stripTagMarks(stripApBlockId(raw))).trim()
   const m = t.match(HEADER_RE)
   return stripApLinkSyntax(m ? m[2].trim() : t)
 }
@@ -530,7 +530,7 @@ export function findHeaderRenames(before, after) {
     for (const raw of String(content || '').split('\n')) {
       const id = getApBlockId(raw)
       if (!id) continue
-      const m = stripFlagComments(stripQbankComments(stripApBlockId(raw))).trim().match(HEADER_RE)
+      const m = stripFlagComments(stripTagMarks(stripApBlockId(raw))).trim().match(HEADER_RE)
       if (m) out.set(id, stripApLinkSyntax(m[2].trim()))
     }
     return out

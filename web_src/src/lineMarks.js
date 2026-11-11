@@ -4,10 +4,34 @@
 
 import { codeLineMap } from './codeBlocks.js'
 import { stripApBlockId } from './docLinks.js'
-import { flagNumber, flagWordIn } from './cardFlags.js'
+import { flagNumber, flagWordIn, stripFlagComments } from './cardFlags.js'
+import { stripTagMarks } from './qbankTags.js'
 
 function indentOf(line) {
   return Math.floor(((line.match(/^[ \t]*/) || [''])[0]).replace(/\t/g, '    ').length / 4)
+}
+
+/**
+ * Whether the "uw::3252" / "flag:red" shortcuts may turn into a hidden comment
+ * on this line. `text` is the line as edited (no indent, no anchor), `caret`
+ * where Space or Return was pressed.
+ *
+ * Any line of text takes them: a heading, a card, a bullet, a sentence. Not
+ * a picture, a bare link, a divider, a table row or a ``` fence, which are
+ * recognized by their whole text and would stop being what they are with a
+ * comment on the end (a picture under a card would no longer ride along to
+ * it). Nor inside a {{cloze}} or `code`, where the words are the card's own.
+ */
+export function takesLineMarks(text, caret) {
+  const body = stripFlagComments(stripTagMarks(String(text ?? ''))).trim()
+  if (!body) return false
+  if (/^\|/.test(body) || /^```/.test(body) || /^(---|\*\*\*|___)$/.test(body)) return false
+  if (/^https?:\/\/\S+$/.test(body) || /^!\[[^\]]*\]\([^)]*\)/.test(body)) return false
+  const before = String(text ?? '').slice(0, caret)
+  const count = (s) => before.split(s).length - 1
+  if (count('{{') > count('}}')) return false
+  if (count('`') % 2) return false
+  return true
 }
 
 /**

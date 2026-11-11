@@ -31,7 +31,7 @@ def _hash(text):
 
 # What the paper looked like at Generate: line numbers 1 and 2.
 GENERATED = [
-    "# Trichomonas<!--uw:3252--><!--flag:red-->",
+    "# Trichomonas<!--uw::3252--><!--flag:red-->",
     f"    What type of organism is this? >> Protozoan [[NH]]<!--ap:{A}-->",
     f"    Treatment options? >> Metronidazole<!--ap:{B}-->",
     "    - Old card without an ID >> answer",

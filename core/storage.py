@@ -836,7 +836,7 @@ def _render_paper_meta(paper) -> str:
         "created_at": getattr(paper, "created_at", None),
         "modified_at": getattr(paper, "modified_at", None),
         "show_chapter_bar": bool(getattr(paper, "show_chapter_bar", False)),
-        "qbank_prefix": getattr(paper, "qbank_prefix", "") or "",
+        "tag_shortcuts": getattr(paper, "tag_shortcuts", None) or {},
         "saved_at": float(getattr(paper, "saved_at", 0.0) or 0.0),
         "title_tag": getattr(paper, "title_tag", None),
         "card_refs": refs,
@@ -1070,7 +1070,7 @@ def _read_paper_from_files(md_path: str, root: str = None) -> Optional[Paper]:
     )
     paper.tags = list(meta.get("tags") or [])
     paper.show_chapter_bar = bool(meta.get("show_chapter_bar", False))
-    paper.qbank_prefix = meta.get("qbank_prefix") or ""
+    paper.tag_shortcuts = meta.get("tag_shortcuts") or {}
     if meta.get("created_at"):
         paper.created_at = meta["created_at"]
     if meta.get("modified_at"):

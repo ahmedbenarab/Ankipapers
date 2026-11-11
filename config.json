@@ -17,7 +17,6 @@
     "toolbar_scroll": false,
     "show_waiting_chapters": false,
     "show_chapter_bar": false,
-    "qbank_tag_prefix": "UWorldABIM",
     "show_heading_card_counts": true,
     "show_suspended_cards": true,
     "suspended_card_opacity": 85

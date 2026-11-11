@@ -105,8 +105,9 @@ class Paper:
         self.modified_at = time.time()
         self.tags: List[str] = []
         self.show_chapter_bar = False
-        # Question-tag prefix for this paper ('' = the folder's, then Settings'); core/qbank.py
-        self.qbank_prefix = ""
+        # This paper's own tags for Tag Shortcuts, {"tags": {"uw": ...}, "old": [...]};
+        # empty = the folder's, then Settings' (core/qbank.py)
+        self.tag_shortcuts: Dict[str, Any] = {}
         # When save_paper() last wrote this paper. A paper is kept in two
         # places (the collection and the files on disk), and this is how a
         # read tells which copy is current. modified_at cannot: Generate
@@ -164,7 +165,7 @@ class Paper:
             "modified_at": self.modified_at,
             "tags": self.tags,
             "show_chapter_bar": bool(getattr(self, "show_chapter_bar", False)),
-            "qbank_prefix": getattr(self, "qbank_prefix", "") or "",
+            "tag_shortcuts": getattr(self, "tag_shortcuts", None) or {},
             "saved_at": float(getattr(self, "saved_at", 0.0) or 0.0),
             "title_tag": getattr(self, "title_tag", None),
         }
@@ -186,7 +187,7 @@ class Paper:
         paper.modified_at = data.get("modified_at", time.time())
         paper.tags = data.get("tags", [])
         paper.show_chapter_bar = bool(data.get("show_chapter_bar", False))
-        paper.qbank_prefix = data.get("qbank_prefix") or ""
+        paper.tag_shortcuts = data.get("tag_shortcuts") or {}
         paper.saved_at = float(data.get("saved_at") or 0.0)
         paper.title_tag = data.get("title_tag") or None
         return paper

@@ -758,7 +758,7 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
                 onQbankPrefix({ type: 'paper', id: p.id, name: p.title })
               }}>
                 <Tag size={13} />
-                <span>Question tag prefix…</span>
+                <span>Tag shortcuts…</span>
               </div>
             )}
             {contextMenu.type === 'paper' && (
@@ -833,7 +833,7 @@ export default function Sidebar({ papers, folders, activePaperId, onSelectPaper,
                     onQbankPrefix({ type: 'folder', path: f.path, name: f.name })
                   }}>
                     <Tag size={13} />
-                    <span>Question tag prefix…</span>
+                    <span>Tag shortcuts…</span>
                   </div>
                 )}
                 <div className="context-item" onClick={() => {

@@ -7,7 +7,7 @@
  */
 
 import { getApBlockId, stripApBlockId } from './docLinks.js'
-import { stripQbankComments } from './qbankTags.js'
+import { stripTagMarks } from './qbankTags.js'
 import { stripFlagComments } from './cardFlags.js'
 
 /** Cursor line index (0-based) for content split by \n */
@@ -105,7 +105,7 @@ function computeHash(text) {
  */
 function hashableContent(lineText) {
   const content = extractCardContent(stripApBlockId(lineText ?? ''))
-  return stripFlagComments(stripQbankComments(content)).replace(/\[\[(.*?)\]\]/g, '').trim()
+  return stripFlagComments(stripTagMarks(content)).replace(/\[\[(.*?)\]\]/g, '').trim()
 }
 
 /** Resolve anki_note_id for a given line (see resolveNoteIdFromIndex). */

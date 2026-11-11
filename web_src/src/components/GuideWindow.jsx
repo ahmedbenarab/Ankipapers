@@ -153,7 +153,8 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                 <Ref code="[[NH]]" tone="muted">
                   Short for “no heading”. Every card normally shows the headings it came
                   from at the top, which is helpful context. Add this when that context
-                  would give the answer away.
+                  would give the answer away. On the page it shows as N̸ in the card's
+                  capsule at the right of the line.
                 </Ref>
                 <Ref code="Card style" tone="muted">
                   How your cards look in Anki. Settings → Card Style switches between
@@ -161,10 +162,12 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                   style that is light in Anki's light mode and dark in dark mode.
                   Saving restyles every card at once, phone included after a sync.
                 </Ref>
-                <Ref code="BASIC  CLOZE" tone="muted">
-                  The bubble at the right of each card line says what kind of card it makes.
-                  Settings → Editor → Card Type Badges hides them for a cleaner page; a
-                  weak-spot marker and the open-in-Anki button stay.
+                <Ref code="⚠ 3 | ⚑ | ⓢ | N̸ | BASIC" tone="muted">
+                  The capsule at the right of each card line holds everything about the
+                  card: lapses (red for a leech), its flag in Anki, ⓢ when suspended, N̸
+                  for <code>[[NH]]</code>, and what kind of card it is. Only what applies
+                  shows; rest the pointer on a part for what it means. Settings → Editor
+                  turns off the type, weak spots or ⓢ.
                 </Ref>
               </RefGroup>
           )}
@@ -172,24 +175,31 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
               <RefGroup
                 icon={Flag}
                 title="Question tags and flags"
-                blurb="Two words you can type at the end of a heading. Each turns into a hidden note on the heading, and Add Cards to Anki applies it to every card underneath: everything indented below it, smaller headings included."
+                blurb="Two words you can type at the end of a heading, or of any line of text. Each turns into a hidden note on the line, and Add Cards to Anki applies it to the line's own card and every card underneath: everything indented below it, smaller headings included."
               >
-                <Ref code="## Heading uw3252" tone="heading">
-                  Type <code>uw</code> and a UWorld question number, then Space or Return.
-                  The word disappears into the heading, and every card under it gets the
-                  tag <code>UWorldABIM::3252</code>, so Anki's Browser can find all the
-                  cards from that question. Add more the same way, or several at once
-                  with <code>uw3252,4410</code>. Searching for 3252 finds the heading.
+                <Ref code="## Heading uw::3252" tone="heading">
+                  Type a tag shortcut, two colons and a question number, then Space or
+                  Return. The word disappears into the heading, and every card under it
+                  gets the shortcut's tag with the number: <code>UWorldABIM::3252</code>,
+                  so Anki's Browser can find all the cards from that question. Add more
+                  the same way, or several at once with <code>uw::3252,4410</code>.
+                  Searching for 3252 finds the heading.
                 </Ref>
                 <Ref code="Changing the ids" tone="key">
                   Click into the heading to see them, and edit or delete them there. An
                   id you take off loses its tag from those cards the next time you add
                   cards to Anki. Tags you added yourself in Anki are never touched.
                 </Ref>
-                <Ref code="Question tag prefix" tone="key">
-                  <code>UWorldABIM</code> unless you change it, in Settings → Cards for
-                  everything, or for one paper or folder from its right-click menu in the
-                  sidebar — say <code>MKSAP</code> for a MKSAP folder.
+                <Ref code="Tag Shortcuts" tone="key">
+                  In Settings → Cards: each shortcut and the tag it stands for, starting
+                  with <code>uw</code> → <code>UWorldABIM</code>. Add one per question
+                  bank, say <code>ab</code> → <code>AMBOSS</code>. Each shortcut and each
+                  tag can be used only once. Rename a tag and your cards move to the new
+                  name the next time you add cards to Anki.
+                </Ref>
+                <Ref code="Right-click → Tag shortcuts…" tone="key">
+                  Give a shortcut its own tag in one paper or folder, say{' '}
+                  <code>uw</code> → <code>UWorld_Step1</code> for a Step 1 folder.
                 </Ref>
                 <Ref code="## Heading flag:red" tone="heading">
                   Flags every card under the heading in Anki. Use any of Anki's flags:
@@ -197,10 +207,17 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                   1–7. Typing a new one replaces the old; <code>flag:none</code> takes it
                   off. Where flagged headings sit inside each other, the nearest one wins.
                 </Ref>
+                <Ref code="Card line flag:blue" tone="basic">
+                  Both words work on a card's own line too, and on a bullet with cards
+                  under it. A card's own flag beats its heading's, so a blue card stays
+                  blue under a red heading. Question tags add up instead: the card gets
+                  its own ids and the heading's. Pictures, bare links, dividers, tables
+                  and <code>```</code> fences don't take them.
+                </Ref>
                 <Ref code="The colored line" tone="key">
                   The line beside the line numbers takes the flag's color from the heading
-                  down through everything under it. A card flagged in Anki on its own shows
-                  a small flag in that color beside its badge.
+                  down through everything under it, and a card with its own flag shows its
+                  own color there. Each card's capsule shows the flag Anki has for it.
                 </Ref>
                 <Ref code="ⓢ" tone="key">
                   A card line whose cards are suspended in Anki fades and gets this mark;
@@ -215,8 +232,9 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                 </Ref>
                 <Ref code="Unflagging in Anki" tone="key">
                   A flag you clear in Anki stays cleared: Add Cards to Anki only sets a flag
-                  when you change it in the paper. Clear every card under a heading and the
-                  heading loses its flag too, and the message afterwards says which.
+                  when you change it in the paper. Clear every card a flagged heading or card
+                  line covers and that line loses its flag too, and the message afterwards
+                  says which.
                 </Ref>
               </RefGroup>
           )}
@@ -662,9 +680,9 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                     back. Turn it off in Settings.
                   </Ref>
                 )}
-                <Ref code="uw3252 / flag:red + Space" tone="key">
-                  At the end of a heading: tag or flag every card under it when you add
-                  cards to Anki. See Question tags and flags.
+                <Ref code="uw::3252 / flag:red + Space" tone="key">
+                  At the end of a heading or card line: tag or flag that card and every card
+                  under it when you add cards to Anki. See Question tags and flags.
                 </Ref>
                 <Ref code="Ctrl+Shift+D" tone="key">
                   Draft cards from the lines you've selected, or the line you're on.

@@ -272,13 +272,15 @@ export async function getWebBrowser() {
   return call('get_web_browser');
 }
 
-// Question-tag prefix (core/qbank.py): { own, inherited, effective } for a
-// paper ({ paper_id }) or a folder ({ folder_path }).
-export async function getQbankPrefix(target) {
-  return call('get_qbank_prefix', target);
+// A paper's ({ paper_id }) or folder's ({ folder_path }) own tags for the Tag
+// Shortcuts (core/qbank.py). get: { rows: [{ shortcut, own, inherited }] };
+// set: { ...target, tags: { uw: 'UWorld_Step1' } }, refused with { error }
+// when the table would stop being one-to-one.
+export async function getTagOverrides(target) {
+  return call('get_tag_overrides', target);
 }
-export async function setFolderQbankPrefix(folderPath, prefix) {
-  return call('set_folder_qbank_prefix', { folder_path: folderPath, prefix });
+export async function setTagOverrides(args) {
+  return call('set_tag_overrides', args);
 }
 
 // Source panel
@@ -412,11 +414,12 @@ function createMockBridge() {
     search_papers: ({ query }) => searchPapersAdvanced(papers, query),
     get_note_stats: ({ note_ids }) => {
       const sample = {
-        1001: { status: 'weak', lapses: 3, reviews: 9, again: 3, ease: 170, last_review: Date.now() / 1000 - 2 * 86400, last_ease: 1, next_due_days: 1, is_new: false, suspended: false },
-        1004: { status: 'leech', lapses: 8, reviews: 14, again: 8, ease: 130, last_review: Date.now() / 1000 - 5 * 86400, last_ease: 1, next_due_days: null, is_new: false, suspended: true },
+        1001: { status: 'weak', lapses: 3, reviews: 9, again: 3, ease: 170, last_review: Date.now() / 1000 - 2 * 86400, last_ease: 1, next_due_days: 1, is_new: false, suspended: false, cards: 1, suspended_cards: 1, flags: [4] },
+        1002: { status: null, lapses: 0, reviews: 5, again: 0, ease: 250, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 4, is_new: false, suspended: false, cards: 2, suspended_cards: 1, flags: [2, 2] },
+        1004: { status: 'leech', lapses: 8, reviews: 14, again: 8, ease: 130, last_review: Date.now() / 1000 - 5 * 86400, last_ease: 1, next_due_days: null, is_new: false, suspended: true, cards: 1, suspended_cards: 1, flags: [1] },
       }
       const stats = {}
-      for (const n of note_ids || []) stats[n] = sample[n] || { status: null, lapses: 0, reviews: 4, again: 0, ease: 250, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 6, is_new: false, suspended: false }
+      for (const n of note_ids || []) stats[n] = sample[n] || { status: null, lapses: 0, reviews: 4, again: 0, ease: 250, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 6, is_new: false, suspended: false, cards: 1, suspended_cards: 0, flags: [0] }
       return { stats }
     },
     unsuspend_note: () => ({ ok: true, unsuspended: 1 }),
@@ -458,12 +461,17 @@ function createMockBridge() {
     occlusion_edit: ({ name }) => { console.log('Mock: edit occlusions for', name); return { ok: true }; },
     set_web_browser: ({ open }) => ({ open: !!open }),
     get_web_browser: () => ({ open: false }),
-    get_qbank_prefix: () => ({ own: '', inherited: 'UWorldABIM', effective: 'UWorldABIM' }),
-    set_folder_qbank_prefix: () => ({ ok: true }),
+    get_tag_overrides: () => ({ rows: [
+      { shortcut: 'uw', own: '', inherited: 'UWorldABIM' },
+      { shortcut: 'ab', own: 'AMBOSS_Step1', inherited: 'AMBOSS' },
+    ] }),
+    set_tag_overrides: ({ tags }) => (Object.values(tags || {}).some((t) => /^uworldabim$/i.test(t) || /^amboss$/i.test(t))
+      ? { error: 'That tag already belongs to another shortcut.' } : { ok: true }),
     get_settings: () => ({
       default_deck: 'Default', auto_save_interval_seconds: 30, font_size: 14,
       font_family: 'JetBrains Mono', editor_theme: 'dark', show_card_indicators: true, show_heading_card_counts: true, show_suspended_cards: true, suspended_card_opacity: 85, show_line_numbers: true, color_scheme: 'carolina', weak_spot_markers: true,
       anki_edit_conflict: 'ask',
+      tag_shortcuts: [{ shortcut: 'uw', tag: 'UWorldABIM', old: [] }, { shortcut: 'ab', tag: 'AMBOSS', old: [] }],
     }),
     // Mirrors gui/bridge.py: a changed card_style reports it was applied.
     save_settings: ({ settings }) => {
@@ -533,7 +541,7 @@ if (typeof window !== 'undefined') {
     searchPapers, getHomeStats, getNoteStats, unsuspendNote,
     importMarkdown, exportMarkdown, exportPdf, exportPapersToDisk,
     getSettings, saveSettings, openUrl, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
-    getQbankPrefix, setFolderQbankPrefix,
+    getTagOverrides, setTagOverrides,
     getOcclusionCounts, createOcclusion, editOcclusion,
     pickPdfFile, getPdfViewerUrl, getPdfUrl, extractPdfText, extractWebText,
     saveSourceLink, loadSourceLink, openSourceAtLocation,

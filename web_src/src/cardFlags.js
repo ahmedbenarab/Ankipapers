@@ -1,12 +1,13 @@
-// An Anki flag on a heading, kept in a hidden comment written flush after its
-// text, like the question ids (qbankTags.js):
+// An Anki flag on a line (a heading, a card, any line of text), kept in a
+// hidden comment written flush after its text, like the question ids
+// (qbankTags.js):
 //
 //   ## Aortic stenosis<!--flag:red-->
 //
 // The paper never shows it; the editor's textarea does while the line is
-// being edited. At Generate every card under the heading gets the flag, and a
-// heading whose cards were all unflagged in Anki loses the comment (core/flags.py,
-// which this mirrors).
+// being edited. At Generate the line's own card and every card under it get
+// the flag (a card's own line beats its heading), and a line whose cards were
+// all unflagged in Anki loses the comment (core/flags.py, which this mirrors).
 
 export const FLAG_NUMBERS = { red: 1, orange: 2, green: 3, blue: 4, pink: 5, turquoise: 6, purple: 7 }
 export const FLAG_NAMES = Object.fromEntries(Object.entries(FLAG_NUMBERS).map(([k, v]) => [v, k]))
@@ -32,7 +33,7 @@ export function flagWordIn(text) {
 
 /**
  * Typing shortcut: "flag:red" (any flag name, a number 0-7, or "none") as the
- * last word before the caret on a heading. Returns { start, flag } -- where
+ * last word before the caret on a line (lineMarks.takesLineMarks). Returns { start, flag } -- where
  * the word starts, counting any space in front -- or null.
  */
 export function findFlagShortcut(textBeforeCaret) {

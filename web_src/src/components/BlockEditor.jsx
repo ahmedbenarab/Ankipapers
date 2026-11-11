@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
-import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, Flag, SquareDashedMousePointer } from 'lucide-react'
+import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, Flag, SquareDashedMousePointer, TriangleAlert } from 'lucide-react'
 import { openInBrowser, pasteImage, getClipboardText, getOcclusionCounts, createOcclusion, editOcclusion, OCCLUSIONS_CHANGED_EVENT } from '../bridge'
 import WeakSpotHover from './WeakSpotHover'
 import DraftGroup from './DraftGroup'
@@ -44,28 +44,28 @@ import {
   isFenceCloseLine,
   arrowsFromSpaces,
 } from '../codeBlocks'
-import { stripQbankComments, findQbankShortcut, addQbankIds, qbankIdsIn } from '../qbankTags'
+import { stripTagMarks, findTagShortcut, addTagMarks, tagMarksIn, DEFAULT_SHORTCUTS } from '../qbankTags'
 import { stripFlagComments, findFlagShortcut, setFlagComment, flagWordIn, FLAG_NAMES } from '../cardFlags'
-import { lineFlags, ankiFlagOf } from '../lineMarks'
+import { lineFlags, ankiFlagOf, takesLineMarks } from '../lineMarks'
 import { buildOutline } from '../outline'
 
-/** A line's text without its hidden heading marks (question ids, flag). */
-function stripHeadingMarks(text) {
-  return stripFlagComments(stripQbankComments(text))
+/** A line's text without its hidden marks (question ids, flag). */
+function stripLineMarks(text) {
+  return stripFlagComments(stripTagMarks(text))
 }
 
 /**
- * Enter: the hidden heading marks (<!--uw:...-->, <!--flag:...-->) belong to
+ * Enter: a line's hidden marks (<!--uw::...-->, <!--flag:...-->) belong to
  * the line's text like its anchor does, so a split before them keeps them on
  * the top line -- unless the whole text is moving down. Returns [before, after].
  */
 function keepMarksOnTop(before, after) {
-  const ids = qbankIdsIn(after)
+  const marks = tagMarksIn(after)
   const flag = flagWordIn(after)
-  if (!before.trim() || (!ids.length && !flag)) return [before, after]
-  let top = ids.length ? addQbankIds(before, ids) : before
+  if (!before.trim() || (!marks.length && !flag)) return [before, after]
+  let top = marks.length ? addTagMarks(before, marks) : before
   if (flag) top = setFlagComment(top, flag)
-  return [top, stripHeadingMarks(after)]
+  return [top, stripLineMarks(after)]
 }
 
 // Shown next to "Paste blocks" and used in its error message.
@@ -299,31 +299,84 @@ function mediaImageName(line) {
 }
 
 // ─── Rendered block ─────────────────────────────────
+// [[NH]] ("no heading") on a card line, any case and spacing. The paper keeps
+// it; the editor draws it as N̸ in the card's capsule instead of as text.
+const NH_RE = /\[\[\s*nh\s*\]\]/gi
+
+const CARD_TYPE_INFO = {
+  basic: ['BASIC', 'Basic card: question, then answer.'],
+  reversible: ['REVERSIBLE', 'Reversible card: asked both ways round.'],
+  cloze: ['CLOZE', 'Cloze card: fill in the hidden words.'],
+}
+
 /**
- * Beside a card's type badge: the card's own Anki flag, when the heading's
- * flag (the colored gutter rule) doesn't already account for it, and ⓢ when
- * its cards are suspended (Settings → Suspended Cards).
+ * The capsule at the right edge of a card line: everything known about the
+ * card, one compartment each, divided by thin rules -- lapses (⚠ 3, red for
+ * a leech), its Anki flag, ⓢ when suspended, N̸ for [[NH]], and its type.
+ * A compartment that doesn't apply, or whose setting is off (Weak-Spot
+ * Markers, Suspended Cards, Card Type Badges), is simply left out; each one
+ * says what it means on hover. The open-in-Anki button sits just outside.
  */
-function CardMarks({ ankiFlag, suspendedCards, cardCount }) {
-  const tip = suspendedCards >= cardCount
-    ? 'The cards on this line are suspended in Anki.'
-    : `${suspendedCards} of ${cardCount} cards on this line are suspended in Anki.`
-  const flagName = FLAG_NAMES[ankiFlag] || ''
+function CardMeta({ type, noteId, weakStatus, weakLapses, flag, suspendedCards, cardCount, noHeading, showType }) {
+  const many = cardCount > 1
+  const segs = []
+  if (weakStatus) {
+    const leech = weakStatus === 'leech'
+    segs.push(
+      <span key="lapses" className={`card-meta-seg card-meta-lapses${leech ? ' is-leech' : ''}`}
+        data-tip={leech ? `This card is a leech: ${weakLapses} lapses.` : `This card has ${weakLapses} ${weakLapses === 1 ? 'lapse' : 'lapses'}.`}>
+        <TriangleAlert size={11} strokeWidth={2.4} />{weakLapses}
+      </span>
+    )
+  }
+  if (flag > 0) {
+    const name = FLAG_NAMES[flag] || ''
+    segs.push(
+      <span key="flag" className="card-meta-seg" data-tip={`${many ? 'These cards are' : 'This card is'} flagged ${name}.`}>
+        <Flag size={12} strokeWidth={2.4} style={{ color: `var(--flag-${flag})` }} />
+      </span>
+    )
+  }
+  if (suspendedCards > 0) {
+    const tip = suspendedCards >= cardCount
+      ? (many ? 'These cards are suspended.' : 'This card is suspended.')
+      : `${suspendedCards} of ${cardCount} cards on this line are suspended.`
+    segs.push(<span key="sus" className="card-meta-seg card-meta-sus" data-tip={tip}>ⓢ</span>)
+  }
+  if (noHeading) {
+    segs.push(
+      <span key="nh" className="card-meta-seg" data-tip="No heading: this card doesn't show the headings above it.">
+        <span className="card-meta-nh">N</span>
+      </span>
+    )
+  }
+  if (showType && CARD_TYPE_INFO[type]) {
+    const [label, tip] = CARD_TYPE_INFO[type]
+    segs.push(<span key="type" className={`card-meta-seg card-meta-type is-${type}`} data-tip={tip}>{label}</span>)
+  }
+  if (!segs.length && !noteId) return null
   return (
-    <>
-      {ankiFlag > 0 && (
-        <i className="card-anki-flag" style={{ color: `var(--flag-${ankiFlag})` }}
-          title={`${flagName.charAt(0).toUpperCase()}${flagName.slice(1)} flag in Anki`}>
-          <Flag size={12} />
-        </i>
+    <div className="card-meta-side">
+      {segs.length > 0 && <span className="card-meta">{segs}</span>}
+      {noteId && (
+        <button className="block-card-browser-btn" title="Open in Anki" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
+          <ExternalLink size={10} />
+        </button>
       )}
-      {suspendedCards > 0 && <i className="suspended-mark" data-tip={tip} aria-label={tip}>ⓢ</i>}
-    </>
+    </div>
   )
 }
 
-function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '' }) {
-  const t = stripApBlockId(line).trim()
+function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '', showType = true }) {
+  const isCard = type === 'basic' || type === 'reversible' || type === 'cloze'
+  const raw = stripApBlockId(line).trim()
+  const noHeading = isCard && NH_RE.test(raw)
+  NH_RE.lastIndex = 0
+  const t = noHeading ? raw.replace(NH_RE, ' ').replace(/[ \t]{2,}/g, ' ').trim() : raw
+  const meta = isCard && (
+    <CardMeta type={type} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} flag={ankiFlag}
+      suspendedCards={suspendedCards} cardCount={cardCount} noHeading={noHeading} showType={showType} />
+  )
 
   // Cells come from the shared parseTableRow rather than a local copy. The
   // copy that used to live here stripped a trailing "|" with /\|$/ — which
@@ -468,24 +521,13 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
     const content = t.replace(/^\s*[-*]\s+/, '')
     const m = content.match(BASIC_CARD_RE)
     if (m) return (
-      <div className={`block-card block-card-basic${weakStatus ? ' has-weak' : ''}`}>
-        <div className="block-card-type">
-          {weakStatus && (
-            <i className={`weak-pill is-${weakStatus}`}>
-              {weakStatus === 'leech' ? `Leech · ${weakLapses} lapses` : `${weakLapses} lapses`}
-            </i>
-          )}
-          <CardMarks ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} />
-          <span>BASIC</span>
-          {noteId && (
-            <button className="block-card-browser-btn" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
-              <ExternalLink size={10} />
-            </button>
-          )}
+      <div className="block-card block-card-basic">
+        <div className="block-card-body">
+          <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
+          <div className="block-card-sep">▼</div>
+          <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
         </div>
-        <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
-        <div className="block-card-sep">▼</div>
-        <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
+        {meta}
       </div>
     )
   }
@@ -494,47 +536,22 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
     const content = t.replace(/^\s*[-*]\s+/, '')
     const m = content.match(/^(.+?)\s*<>\s*(.+)$/)
     if (m) return (
-      <div className={`block-card block-card-reversible${weakStatus ? ' has-weak' : ''}`}>
-        <div className="block-card-type reversible">
-          {weakStatus && (
-            <i className={`weak-pill is-${weakStatus}`}>
-              {weakStatus === 'leech' ? `Leech · ${weakLapses} lapses` : `${weakLapses} lapses`}
-            </i>
-          )}
-          <CardMarks ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} />
-          <span>REVERSIBLE</span>
-          {noteId && (
-            <button className="block-card-browser-btn" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
-              <ExternalLink size={10} />
-            </button>
-          )}
+      <div className="block-card block-card-reversible">
+        <div className="block-card-body">
+          <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
+          <div className="block-card-sep">⇅</div>
+          <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
         </div>
-        <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
-        <div className="block-card-sep">⇅</div>
-        <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
+        {meta}
       </div>
     )
   }
 
   if (type === 'cloze') {
     return (
-      <div className={`block-cloze-wrapper${weakStatus ? ' has-weak' : ''}`}>
-        {/* Injected the standard card type container with a specific cloze class */}
-        <div className="block-card-type cloze-type">
-          {weakStatus && (
-            <i className={`weak-pill is-${weakStatus}`}>
-              {weakStatus === 'leech' ? `Leech · ${weakLapses} lapses` : `${weakLapses} lapses`}
-            </i>
-          )}
-          <CardMarks ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} />
-          <span>CLOZE</span>
-          {noteId && (
-            <button className="block-card-browser-btn" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
-              <ExternalLink size={10} />
-            </button>
-          )}
-        </div>
+      <div className="block-cloze-wrapper">
         <div className="block-cloze" dangerouslySetInnerHTML={formatInlineProp(t, mediaDir)} />
+        {meta}
       </div>
     )
   }
@@ -828,6 +845,7 @@ const Block = React.memo(function Block({
   cardCount = 0,
   headCards = 0,
   headSus = '',
+  showType = true,
   onCreateOcclusion,
 }) {
   const inputRef = useRef(null)
@@ -978,7 +996,7 @@ const Block = React.memo(function Block({
         ) : codeInfo ? (
           <CodeRow type={type} info={codeInfo} active={codeActive} text={actualText} depth={codeSplit ? codeSplit.depth : 0} />
         ) : (
-          <RenderBlock line={stripHeadingMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} />
+          <RenderBlock line={stripLineMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} showType={showType} />
         )}
       </div>
     </div>
@@ -1347,6 +1365,9 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   selectionAnchorRef.current = selectionAnchor
   const textReplacementsRef = useRef(textReplacements)
   textReplacementsRef.current = textReplacements
+  // Settings -> Cards -> Tag Shortcuts, for "uw::3252" + Space (qbankTags.js).
+  const tagShortcutsRef = useRef(DEFAULT_SHORTCUTS)
+  tagShortcutsRef.current = Array.isArray(settings?.tag_shortcuts) ? settings.tag_shortcuts : DEFAULT_SHORTCUTS
   const onHistoryCheckpointRef = useRef(onHistoryCheckpoint)
   onHistoryCheckpointRef.current = onHistoryCheckpoint
 
@@ -1539,25 +1560,27 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const tableBounds = findTableBounds(lines, index)
     const inTable = !!tableBounds && tableBounds.start === index
 
-    // ── Heading marks: "uw3252" or "flag:red", then Space or Return ─────
-    // "uw3252" goes into the heading's hidden <!--uw:...--> comment (merged
-    // with any ids already there), which tags every card under the heading
-    // at Generate (qbankTags.js, core/qbank.py). "flag:red" sets its hidden
-    // <!--flag:...-->, which flags them ("flag:none" takes it off; cardFlags.js,
+    // ── Line marks: "uw::3252" or "flag:red", then Space or Return ──────
+    // "uw::3252" (uw being one of the Tag Shortcuts) goes into the line's
+    // hidden <!--uw::...--> comment (merged with any already there), which
+    // tags the line's own card and every card under it at Generate
+    // (qbankTags.js, core/qbank.py). "flag:red"
+    // sets its hidden <!--flag:...-->, which flags them; a card's own flag
+    // beats a heading's ("flag:none" takes it off; cardFlags.js,
     // core/flags.py). Return then opens the next line as usual. Plain keys
-    // only, nothing selected, headings only.
+    // only, nothing selected, on any line of text (takesLineMarks).
     if ((e.key === ' ' || e.key === 'Enter') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
         && !codeRole && !inTable && !e.nativeEvent?.isComposing
         && e.target.selectionStart === e.target.selectionEnd
-        && /^#{1,6}\s/.test(actualText)) {
+        && takesLineMarks(actualText, e.target.selectionStart)) {
       const caret = e.target.selectionStart
       const textBefore = actualText.slice(0, caret)
-      const qHit = findQbankShortcut(textBefore)
+      const qHit = findTagShortcut(textBefore, tagShortcutsRef.current)
       const fHit = qHit ? null : findFlagShortcut(textBefore)
       if (qHit || fHit) {
         e.preventDefault()
         onHistoryCheckpointRef.current?.()   // first Ctrl+Z brings the word back
-        const mark = (body) => (qHit ? addQbankIds(body, qHit.ids) : setFlagComment(body, String(fHit.flag)))
+        const mark = (body) => (qHit ? addTagMarks(body, qHit.marks) : setFlagComment(body, String(fHit.flag)))
         const head = actualText.slice(0, (qHit || fHit).start)
         const rest = actualText.slice(caret)
         if (e.key === ' ') {
@@ -2080,10 +2103,10 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const path = []
     for (let i = first - 1; i >= 0; i--) {
       const lv = levelOf(lines[i])
-      if (lv && (!path.length || lv < path[0].lv)) path.unshift({ lv, t: stripHeadingMarks(stripApBlockId(lines[i])).trim().replace(/^#+\s*/, '') })
+      if (lv && (!path.length || lv < path[0].lv)) path.unshift({ lv, t: stripLineMarks(stripApBlockId(lines[i])).trim().replace(/^#+\s*/, '') })
       if (lv === 1) break
     }
-    const text = idx.map((i) => stripHeadingMarks(stripApBlockId(lines[i]))).filter((l) => l.trim()).join('\n')
+    const text = idx.map((i) => stripLineMarks(stripApBlockId(lines[i]))).filter((l) => l.trim()).join('\n')
     // Cards already written in the same section, so drafts don't repeat them.
     let s0 = first, s1 = last
     while (s0 > 0 && !levelOf(lines[s0])) s0--
@@ -3278,7 +3301,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   useEffect(() => () => cancelAnimationFrame(visibleLineRaf.current), [])
 
   return (
-    <div className={`block-editor ${showLineNumbers ? 'with-line-numbers' : ''}${showCardBadges ? '' : ' hide-card-badges'}`} ref={containerRef} onPaste={handlePaste}
+    <div className={`block-editor ${showLineNumbers ? 'with-line-numbers' : ''}`} ref={containerRef} onPaste={handlePaste}
       onScroll={() => { if (hover) closeHover(); reportVisibleLine() }}
       onMouseDown={(e) => { closeHover(); handleEditorMouseDown(e) }} onClick={(e) => {
       if ((e.target === containerRef.current || e.target.classList.contains('block-editor-pad')) && selectedIndices.size === 0) {
@@ -3307,7 +3330,9 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         const isCard = displayType === 'basic' || displayType === 'reversible' || displayType === 'cloze'
         const st = isCard ? statsOf(b) : null
         const lineFlag = lineFlagList[i] || 0
-        const cardFlag = st ? ankiFlagOf(st.flags) : 0
+        // The capsule's flag: what Anki has once the card is there (a flag
+        // cleared in Anki shows as cleared), the paper's own until then.
+        const cardFlag = !isCard ? 0 : st ? ankiFlagOf(st.flags) : lineFlag
         const suspendedCards = showSuspended && st ? (st.suspended_cards || 0) : 0
         const head = headingInfo.get(i)
         const headSus = showSuspended && head
@@ -3358,11 +3383,12 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 weakLapses={weak?.lapses || 0}
                 occlusionCards={displayType === 'image' ? (occlusions[mediaImageName(displayLine)]?.cards || 0) : 0}
                 onOpenOcclusion={openOcclusion}
-                ankiFlag={cardFlag && cardFlag !== lineFlag ? cardFlag : 0}
+                ankiFlag={cardFlag}
                 suspendedCards={suspendedCards}
                 cardCount={st?.cards || 0}
                 headCards={showCardCounts && head ? head.cards : 0}
                 headSus={headSus}
+                showType={showCardBadges}
                 onCreateOcclusion={createOcclusionFor}
                 codeInfo={b.code || null}
                 codeActive={!!b.code && focusedIndex !== null && focusedIndex >= b.code.open && focusedIndex <= b.code.close}

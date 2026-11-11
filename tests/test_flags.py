@@ -183,7 +183,7 @@ console.log(JSON.stringify({
   num: findFlagShortcut('## AS flag:2'),
   none: findFlagShortcut('## AS flag:none'),
   noHit: findFlagShortcut('## AS redflag:red'),
-  set: setFlagComment('    ## AS<!--uw:1-->', 'red'),
+  set: setFlagComment('    ## AS<!--uw::1-->', 'red'),
   replace: setFlagComment('    ## AS<!--flag:red-->', '3'),
   clear: setFlagComment('    ## AS<!--flag:red-->', '0'),
   strip: stripFlagComments('## AS<!--flag:red-->'),
@@ -207,7 +207,7 @@ class EditorHelpers(unittest.TestCase):
         self.assertIsNone(self.r["noHit"])
 
     def test_set_replace_clear(self):
-        self.assertEqual(self.r["set"], "    ## AS<!--uw:1--><!--flag:red-->")
+        self.assertEqual(self.r["set"], "    ## AS<!--uw::1--><!--flag:red-->")
         self.assertEqual(self.r["replace"], "    ## AS<!--flag:green-->")
         self.assertEqual(self.r["clear"], "    ## AS")
         self.assertEqual(self.r["strip"], "## AS")
