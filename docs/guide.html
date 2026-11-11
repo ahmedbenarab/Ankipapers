@@ -6,12 +6,12 @@
 <title>Anki Papers for Medical Students</title>
 <style>
   :root {
-    --bg: #070f22; --bg2: #0b1730; --surface: #132548; --line: #23375e;
-    --text: #e9f1fb; --text2: #a9bcd8; --muted: #6f86ab; --accent: #4b9cd3;
-    --basic: #4ade80; --rev: #f0b45a; --cloze: #f472b6;
+    --bg: #f3f7fb; --bg2: #ffffff; --surface: #e3ebf5; --line: #d3dfee;
+    --text: #0f2a55; --text2: #34507a; --muted: #6a80a3; --accent: #19468d;
+    --basic: #15803d; --rev: #a8620a; --cloze: #be185d;
   }
-  @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) { --bg: #f3f7fb; --bg2: #ffffff; --surface: #e3ebf5; --line: #d3dfee; --text: #0f2a55; --text2: #34507a; --muted: #6a80a3; --accent: #19468d; --basic: #15803d; --rev: #a8620a; --cloze: #be185d; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #070f22; --bg2: #0b1730; --surface: #132548; --line: #23375e; --text: #e9f1fb; --text2: #a9bcd8; --muted: #6f86ab; --accent: #4b9cd3; --basic: #4ade80; --rev: #f0b45a; --cloze: #f472b6; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 Inter, "Segoe UI", system-ui, sans-serif; }
@@ -27,7 +27,7 @@
   h2 .n { color: var(--accent); margin-right: 10px; font-variant-numeric: tabular-nums; }
   .lead { color: var(--text2); margin: 0 0 18px; max-width: 780px; }
   figure { margin: 18px 0 0; }
-  figure img { width: 100%; display: block; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
+  figure img { width: 100%; display: block; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 10px 28px rgba(15,42,85,.12); }
   figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
