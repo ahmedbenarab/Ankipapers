@@ -2,7 +2,8 @@ import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback,
 import { ExternalLink } from 'lucide-react'
 import { openInBrowser } from '../bridge'
 import { getLineIndexAtCursor, getLineTextAtIndex, resolveNoteIdForLine } from '../crossLink'
-import { BASIC_CARD_RE, toggleTagSegment, findTextReplacement } from '../blockFormat'
+import { BASIC_CARD_RE, LIST_ITEM_RE, listItemCounts, toggleTagSegment, findTextReplacement } from '../blockFormat'
+import { codeLineMap } from '../codeBlocks'
 
 // ─── Card Counting ──────────────────────────────────
 function countCards(text) {
@@ -11,6 +12,8 @@ function countCards(text) {
   for (const line of lines) {
     const stripped = line.trim()
     if (!stripped) continue
+    // A "+ " list item is part of its parent's list card, not a card itself.
+    if (LIST_ITEM_RE.test(stripped)) continue
     const cardContent = stripped.replace(/^\s*[-*]\s+/, '')
     // Reversible card: A <> B (check before basic)
     if (/^.+?\s*<>\s*.+$/.test(cardContent)) {
@@ -27,7 +30,8 @@ function countCards(text) {
       cloze++
     }
   }
-  return { basic, reversible, cloze }
+  const list = listItemCounts(lines, codeLineMap(lines)).size
+  return { basic, reversible, cloze, list }
 }
 
 // ─── Format Actions Map ─────────────────────────────

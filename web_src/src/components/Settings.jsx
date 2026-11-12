@@ -170,7 +170,7 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
 
               <label className="settings-label">Card Type Badges</label>
               <p className="settings-field-hint">
-                The Basic, Reversible and Cloze bubbles at the right edge of each card line.
+                The Basic, Reversible, Cloze, List and Item labels in the bubble at the right edge of each card line.
               </p>
               <label className="settings-toggle">
                 <input type="checkbox" checked={local.show_card_indicators !== false}
@@ -255,7 +255,8 @@ export default function Settings({ settings, onSave, onClose, onConvertEmphasis,
                 How your Anki cards look, in the color scheme chosen under Appearance: each scheme has its
                 own Basic and Solarized version (Original purple keeps the classic Solarized).
                 Solarized is light when Anki is in light mode and dark in dark mode. Saving
-                restyles every Anki Papers card at once.
+                restyles every Anki Papers card at once. List cards (a line with + items under it) use
+                the same style, with the item you're recalling outlined.
               </p>
               <div className="theme-toggle-group">
                 <button

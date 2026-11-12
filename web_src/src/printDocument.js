@@ -122,6 +122,11 @@ function renderLine(line, fmt, mediaDir) {
     if (m) return row(`<div class="li"><span class="marker">•</span><span>${fmt(m[1])}</span></div>`)
   }
 
+  if (type === 'list-item') {
+    const m = body.match(/^\+\s+(.+)$/)
+    if (m) return row(`<div class="li"><span class="marker">+</span><span>${fmt(m[1])}</span></div>`)
+  }
+
   if (type === 'numbered') {
     const m = body.match(/^\s*(\d+)\.\s+(.+)$/)
     if (m) return row(`<div class="li"><span class="marker num">${esc(m[1])}.</span><span>${fmt(m[2])}</span></div>`)

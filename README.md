@@ -4,7 +4,7 @@
 
 # Anki Papers
 
-Write notes as **markdown papers** inside Anki. Mark the lines worth remembering and press **Add Cards to Anki** — those lines become **Basic**, **reversible**, and **cloze** cards in your collection, and pressing it again later updates the same cards rather than making new ones.
+Write notes as **markdown papers** inside Anki. Mark the lines worth remembering and press **Add Cards to Anki** — those lines become **Basic**, **reversible**, **cloze** and **list** cards in your collection, and pressing it again later updates the same cards rather than making new ones.
 
 Papers **link to each other**: highlight a phrase, point it at a heading in another document, and follow it with a double-click. A **Links panel** shows what cites the open paper, and a **graph view** shows how the whole library connects.
 
@@ -40,6 +40,13 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 ---
 
 ## What's new
+
+**List cards: learn things in order, one item at a time.** Write a line, then indent `+` items under it. The line becomes one list card, and each item is its own Anki card with its own schedule, much like RemNote's list-answer cards. In review the prompt stays on screen: Space shows the next item, you rate it, and the next one comes up until the list is done. See [List cards](#list-cards--items).
+- **In order, on one screen.** Whichever item Anki offers, the review starts at the first one that's due and walks down the list. Items that aren't due are skipped but stay visible as context, labelled "not due". The items you've rated show their ratings.
+- **Each item is its own card.** Forgetting item 3 doesn't reset items 1 and 2. Reword, reorder, insert or delete items and each one keeps its own review history.
+- **Its own capsule.** Each item line shows its own lapses, flag and ⓢ, with an **ITEM** label. The prompt line sums them up: the weakest item, one flag per color with how many items carry it, how many are suspended, N̸ for `[[NH]]`, and **LIST · 5**. Card Type Badges hides the LIST and ITEM labels like the others.
+- **Flags on items.** `flag:red` on an item line flags just that item's card. Under a flagged heading or prompt every item gets the flag, and an item's own flag wins.
+- **On your phone.** AnkiMobile, AnkiDroid and AnkiWeb don't run add-ons, so there each item comes up as an ordinary card in Anki's own order. Each card still shows the prompt and the items above it, and hides the ones below.
 
 **Tag Shortcuts: your own question tags.** Settings → Cards now has a table of shortcuts, each with the tag it stands for: `uw` → `UWorldABIM`, `ab` → `AMBOSS`, `nb` → `NBME`, whatever your question banks are. Type a shortcut, two colons and an id at the end of a line, then Space: `uw::3252` tags that line's cards and every card under it `UWorldABIM::3252`, the same `::` nesting Anki uses. See [Question tags on headings and lines](#question-tags-on-headings-and-lines).
 - **Deeper levels** carry over: `uw::Cardio::3252` gives `UWorldABIM::Cardio::3252`.
@@ -228,6 +235,30 @@ Each of these turns **one line into one card**. Mix them freely.
 
 Anything you don't mark stays plain text and never becomes a card.
 
+### List cards (`+` items)
+
+For anything you have to know in order: steps, layers, branches, a differential in a fixed sequence. Write a prompt, then indent `+` items under it:
+
+```
+Layers of the epidermis, deep to superficial
+    + Stratum basale
+    + Stratum spinosum
+    + Stratum granulosum
+    + Stratum lucidum
+    + Stratum corneum
+```
+
+The prompt line becomes one **AnkiPapers List** note, and every `+` item one card of it, with its own schedule.
+
+- **Reviewing.** The prompt stays on screen and you go down the list: press Space to show the item, rate it, and the next one comes up, until the list is done. Whichever item Anki offers, the review starts at the first one that's due. Items that aren't due are skipped; every item above the one you're on is shown anyway, as context. Anki's *bury siblings* option is ignored for lists, so rating item 1 doesn't push the rest to tomorrow. Undo steps back one item.
+- **Each item is its own card.** An item you rate Again comes back on its own after its learning step, still showing the items above it. Rewording, reordering, inserting or deleting items keeps each item's review history with that item, because each one is matched by its [hidden anchor](#the-hidden-anchors), not its position. A deleted item's card is removed.
+- **Under a heading** the `+` lines can sit right below it without an indent: `## Branches of the aortic arch` followed by `+ Brachiocephalic trunk` and so on.
+- **A card line can have items too.** `Epidermis >> five layers` with `+` items under it makes the basic card *and* a list card whose prompt is its question side.
+- **Other lines under the prompt keep their jobs.** `-` bullets stay notes and `&&` lines are the list's supplement. Lines nested under an item aren't items, and a `+` inside a ``` fence is code.
+- **Typing.** Enter at the end of an item starts the next `+` item; Enter on an empty one ends the list.
+- **In the editor** each item shows a capsule of its own (lapses, flag, ⓢ, **ITEM**), and the prompt line sums them up: the weakest item, one flag per color with how many items carry it, how many are suspended, N̸ for `[[NH]]`, and **LIST · 5**. Hover an item for its review history, as with any card line. Weak items count in the weak-spot total and the Outline.
+- **On AnkiMobile, AnkiDroid and AnkiWeb**, which don't run add-ons, each item comes up as an ordinary card in Anki's own order. Each card still shows the prompt and the items above it, and hides the ones below, so it works there too, just not as one walk down the list.
+
 ### `&&` supplements
 
 A line beginning `&& ` is **background reading, not a question**. Indent it under a card and it rides along with that card's answer during review. It never becomes a card of its own.
@@ -361,7 +392,7 @@ Like the question ids it becomes a hidden comment (`<!--flag:red-->`), and typin
     Pulsus parvus et tardus <> AS<!--flag:blue-->      ← blue: its own flag wins
 ```
 
-A flag on a bullet, or any other line with cards indented under it, flags those cards the same way. Pictures, bare links, dividers, tables and ``` fences don't take a flag, and the shortcut does nothing inside a `{{cloze}}`.
+A flag on a bullet, or any other line with cards indented under it, flags those cards the same way. On a [list](#list-cards--items) prompt it flags every item; on a `+` item line it flags just that item, and an item's own flag beats the prompt's or the heading's. Pictures, bare links, dividers, tables and ``` fences don't take a flag, and the shortcut does nothing inside a `{{cloze}}`.
 
 You flag cards in Anki as well, so Generate follows a few rules to keep the two in step:
 
@@ -654,7 +685,7 @@ The PDF is drawn by the same renderer as the editor, so what you see is what pri
 | `auto_save_interval_seconds` | How often autosave runs |
 | `font_family` / `font_size` | Editor typeface |
 | `editor_theme` | `dark`, `light`, or `auto` |
-| `show_card_indicators` | The Basic / Reversible / Cloze label in the capsule at the right of each card line (Settings → Editor → Card Type Badges; on by default) |
+| `show_card_indicators` | The Basic / Reversible / Cloze / List / Item label in the capsule at the right of each card line (Settings → Editor → Card Type Badges; on by default) |
 | `color_scheme` | `carolina` (default), `purple`, `mono` or `crimson`: colors the app and the Basic card style |
 | `show_line_numbers` | Line numbers down the left of the editor and Source view (on by default) |
 | `show_chapter_bar` | `false` (default): the chapter bar shows only on papers where the toolbar's book button turned it on; `true`: on every paper that is a chapter of its folder's book or course |
@@ -716,6 +747,8 @@ The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `
 | `core/search_query.py` | The search language |
 | `core/qbank.py` | Question tags on headings and lines: reading the marks, which cards they reach, the Tag Shortcuts table and paper/folder overrides |
 | `core/flags.py` | Flags on headings and lines, and keeping them in step with flags set in Anki |
+| `gui/list_review.py` | Reviewing a list card item by item, in order, on one screen |
+| `web_src/src/listCards.js` | Which lines are list prompts and items, and their numbers from Anki |
 | `gui/webview.py` | Qt window and close-safety handling |
 | `gui/bridge.py` | `QWebChannel` bridge, PDF export, media |
 | `web/` | Built static UI loaded by the webview |
@@ -729,7 +762,7 @@ The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `
 | `web_src/src/components/LinksPanel.jsx` | Backlinks and outgoing links |
 | `web_src/src/components/GraphView.jsx` | Link graph |
 | `user_files/` | Local cache/fallback only (gitignored) |
-| `tests/` | Python tests — run `python3 -m unittest discover -s tests` |
+| `tests/` | Python tests — run `python3 -m unittest discover -s tests`. The list-card tests that open a real collection need Anki's own Python (`"$HOME/Library/Application Support/AnkiProgramFiles/.venv/bin/python" -m unittest discover -s tests` on a Mac) and are skipped otherwise |
 | `gui/text_replacements.py` | Reads your macOS Text Replacements for the editor |
 | `core/ai.py` | AI providers (Claude, Gemini, DeepSeek, OpenAI-compatible), Keychain key storage, background jobs, draft parsing |
 | `core/sources.py` | Attached files and web sources, the chapter map, Word/PowerPoint/HTML reader views, web snapshots |
@@ -752,6 +785,7 @@ The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `
 | Reversible card | `Term <> Definition` |
 | Cloze | `Text with {{blank}}` |
 | Numbered cloze | `{{c1::first}} … {{c2::second}}` |
+| List card | A prompt line, then indented `+ item` lines: one card per item, recalled in order |
 | Supplement | `&& Background that rides along with the answer` |
 | Tag a card | `[[tag]]` → `AnkiPapers::tag` |
 | Suppress the heading breadcrumb | `[[NH]]` |
@@ -774,7 +808,7 @@ The script bundles `__init__.py`, `manifest.json`, `config.json`, `config.md`, `
 ## Developers
 
 - **Dr. Ahmed Benarab** — original author
-- **Dr. Trevor Thompson** — document links and the link graph, papers on disk, stable card identity, PDF export, plain-text paste, pictures on cards, question tags and flags on headings
+- **Dr. Trevor Thompson** — document links and the link graph, papers on disk, stable card identity, PDF export, plain-text paste, pictures on cards, question tags and flags on headings, list cards
 
 ## Contributing / issues
 

@@ -89,7 +89,7 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
               <RefGroup
                 icon={Sparkles}
                 title="Start here"
-                blurb="There are four ways to mark a line. Write the rest of your notes normally — anything you don't mark stays plain text. When you're ready, press Ctrl+G and your cards appear in Anki."
+                blurb="There are five ways to mark a line. Write the rest of your notes normally — anything you don't mark stays plain text. When you're ready, press Ctrl+G and your cards appear in Anki."
               >
                 <Ref code="Question >> Answer" tone="basic">
                   Asks you the question, shows the answer.
@@ -99,6 +99,9 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                 </Ref>
                 <Ref code="Blood loss causes {{anemia}}" tone="cloze">
                   Hides the words in braces and asks you to fill in the gap.
+                </Ref>
+                <Ref code={<>Steps in order{'\n'}{'    '}+ First{'\n'}{'    '}+ Second</>} tone="list">
+                  A list, recalled item by item in order. Each + item is its own card with its own schedule.
                 </Ref>
                 <Ref code="# Heading" tone="heading">
                   A title. It organizes your notes and never becomes a card.
@@ -129,6 +132,15 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                   The same idea, but you choose how it's split up. Everything marked
                   c1 is hidden on one card, everything marked c2 on another. Give two
                   phrases the same number and they're hidden together.
+                </Ref>
+                <Ref code={<>Prompt line{'\n'}{'    '}+ First item{'\n'}{'    '}+ Second item</>} tone="list">
+                  A list card, for things you have to know in order. Each + line indented
+                  under the prompt is an item and its own card, with its own schedule. In
+                  review the prompt stays on screen: Space shows the next item, you rate
+                  it, and the next one comes up until the list is done. Items that aren't
+                  due are skipped but stay visible as context. Under a heading, the + lines
+                  can sit right below it without an indent. Press Enter at the end of an
+                  item to start the next one, and Enter on an empty one to end the list.
                 </Ref>
                 <Ref code="&& Extra explanation" tone="muted">
                   Background reading rather than a question. Indent it underneath a
@@ -208,8 +220,9 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                   off. Where flagged headings sit inside each other, the nearest one wins.
                 </Ref>
                 <Ref code="Card line flag:blue" tone="basic">
-                  Both words work on a card's own line too, and on a bullet with cards
-                  under it. A card's own flag beats its heading's, so a blue card stays
+                  Both words work on a card's own line too, on a + list item (flagging
+                  just that item), and on a bullet with cards under it. A card's own flag
+                  beats its heading's, so a blue card stays
                   blue under a red heading. Question tags add up instead: the card gets
                   its own ids and the heading's. Pictures, bare links, dividers, tables
                   and <code>```</code> fences don't take them.

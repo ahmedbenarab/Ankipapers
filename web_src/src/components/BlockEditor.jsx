@@ -18,6 +18,7 @@ import {
   toggleTagSegment,
   findTextReplacement,
 } from '../blockFormat'
+import { listLines } from '../listCards'
 
 const TABLE_SIZE_LABELS = { s: '40%', m: '60%', l: '80%', full: 'full width' }
 import {
@@ -133,13 +134,14 @@ function getNextClozeNumberInLine(line) {
 }
 
 function countCards(blocks) {
-  let basic = 0, reversible = 0, cloze = 0
+  let basic = 0, reversible = 0, cloze = 0, list = 0
   for (const b of blocks) {
     if (b.type === 'basic') basic++
     else if (b.type === 'reversible') reversible++
     else if (b.type === 'cloze') cloze++
+    if (b.listCount) list++
   }
-  return { basic, reversible, cloze }
+  return { basic, reversible, cloze, list }
 }
 
 /** Wrap selection in a single-line block (same idea as SourceEditor textarea). */
@@ -307,6 +309,7 @@ const CARD_TYPE_INFO = {
   basic: ['BASIC', 'Basic card: question, then answer.'],
   reversible: ['REVERSIBLE', 'Reversible card: asked both ways round.'],
   cloze: ['CLOZE', 'Cloze card: fill in the hidden words.'],
+  item: ['ITEM', 'List item: one card of the list above, recalled in order, with its own schedule.'],
 }
 
 /**
@@ -317,19 +320,33 @@ const CARD_TYPE_INFO = {
  * Markers, Suspended Cards, Card Type Badges), is simply left out; each one
  * says what it means on hover. The open-in-Anki button sits just outside.
  */
-function CardMeta({ type, noteId, weakStatus, weakLapses, flag, suspendedCards, cardCount, noHeading, showType }) {
+function CardMeta({ type, noteId, weakStatus, weakLapses, flag, flagCounts = null, suspendedCards, cardCount, noHeading, showType, listCount = 0, isListParent = false }) {
   const many = cardCount > 1
   const segs = []
   if (weakStatus) {
     const leech = weakStatus === 'leech'
     segs.push(
       <span key="lapses" className={`card-meta-seg card-meta-lapses${leech ? ' is-leech' : ''}`}
-        data-tip={leech ? `This card is a leech: ${weakLapses} lapses.` : `This card has ${weakLapses} ${weakLapses === 1 ? 'lapse' : 'lapses'}.`}>
+        data-tip={isListParent
+          ? (leech ? `An item of this list is a leech: ${weakLapses} lapses.` : `The weakest item has ${weakLapses} ${weakLapses === 1 ? 'lapse' : 'lapses'}.`)
+          : (leech ? `This card is a leech: ${weakLapses} lapses.` : `This card has ${weakLapses} ${weakLapses === 1 ? 'lapse' : 'lapses'}.`)}>
         <TriangleAlert size={11} strokeWidth={2.4} />{weakLapses}
       </span>
     )
   }
-  if (flag > 0) {
+  if (flagCounts && flagCounts.length) {
+    // A list's items, one flag per color with how many items carry it.
+    const tip = flagCounts.map(([f, n], k) => `${n} ${k === 0 ? (n === 1 ? 'item' : 'items') : ''} flagged ${FLAG_NAMES[f] || ''}`.replace(/  +/g, ' ')).join(', ')
+    segs.push(
+      <span key="flag" className="card-meta-seg card-meta-flags" data-tip={`${tip.charAt(0).toUpperCase()}${tip.slice(1)}.`}>
+        {flagCounts.map(([f, n]) => (
+          <span key={f} className="card-meta-flag-count">
+            <Flag size={12} strokeWidth={2.4} style={{ color: `var(--flag-${f})` }} />{n}
+          </span>
+        ))}
+      </span>
+    )
+  } else if (flag > 0) {
     const name = FLAG_NAMES[flag] || ''
     segs.push(
       <span key="flag" className="card-meta-seg" data-tip={`${many ? 'These cards are' : 'This card is'} flagged ${name}.`}>
@@ -338,9 +355,11 @@ function CardMeta({ type, noteId, weakStatus, weakLapses, flag, suspendedCards, 
     )
   }
   if (suspendedCards > 0) {
-    const tip = suspendedCards >= cardCount
-      ? (many ? 'These cards are suspended.' : 'This card is suspended.')
-      : `${suspendedCards} of ${cardCount} cards on this line are suspended.`
+    const tip = isListParent
+      ? (suspendedCards >= cardCount ? 'Every item of this list is suspended.' : `${suspendedCards} of ${cardCount} items are suspended.`)
+      : suspendedCards >= cardCount
+        ? (many ? 'These cards are suspended.' : 'This card is suspended.')
+        : `${suspendedCards} of ${cardCount} cards on this line are suspended.`
     segs.push(<span key="sus" className="card-meta-seg card-meta-sus" data-tip={tip}>ⓢ</span>)
   }
   if (noHeading) {
@@ -354,6 +373,7 @@ function CardMeta({ type, noteId, weakStatus, weakLapses, flag, suspendedCards, 
     const [label, tip] = CARD_TYPE_INFO[type]
     segs.push(<span key="type" className={`card-meta-seg card-meta-type is-${type}`} data-tip={tip}>{label}</span>)
   }
+  if (showType && listCount > 0) segs.push(<ListSeg key="list" count={listCount} />)
   if (!segs.length && !noteId) return null
   return (
     <div className="card-meta-side">
@@ -367,15 +387,48 @@ function CardMeta({ type, noteId, weakStatus, weakLapses, flag, suspendedCards, 
   )
 }
 
-function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '', showType = true }) {
+/**
+ * A line with "+ " children is also a list card (one card per item). Its
+ * capsule says so: "LIST · 3". A line that is a card as well keeps its own
+ * capsule and gains the compartment; any other line gets a capsule of its own.
+ */
+function RenderBlock(props) {
+  const { type, line, listCount = 0, listNoteId = null, showType = true, listSummary = '' } = props
+  const isCard = type === 'basic' || type === 'reversible' || type === 'cloze'
+  if (!listCount || isCard) return <RenderBlockInner {...props} />
+  // listSummary: "status|lapses|suspended|cards|f:n,f:n" (a string, so the
+  // memoized Block re-renders only when it changes). See listSummaryOf.
+  const [status, lapses, suspended, cards, flags] = String(listSummary).split('|')
+  const flagCounts = (flags || '').split(',').filter(Boolean).map((x) => x.split(':').map(Number))
+  const noHeading = /\[\[\s*nh\s*\]\]/i.test(stripApBlockId(line))
+  return (
+    <div className="block-card block-list-parent">
+      <div className="block-card-body"><RenderBlockInner {...props} /></div>
+      <CardMeta type={null} noteId={listNoteId} weakStatus={status || null} weakLapses={Number(lapses) || 0}
+        flagCounts={flagCounts} suspendedCards={Number(suspended) || 0} cardCount={Number(cards) || 0}
+        noHeading={noHeading} showType={showType} listCount={listCount} isListParent />
+    </div>
+  )
+}
+
+function ListSeg({ count }) {
+  return (
+    <span className="card-meta-seg card-meta-type is-list"
+      data-tip={`List card: ${count} ${count === 1 ? 'item' : 'items'}, recalled in order, each with its own schedule.`}>
+      LIST · {count}
+    </span>
+  )
+}
+
+function RenderBlockInner({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '', showType = true, listCount = 0 }) {
   const isCard = type === 'basic' || type === 'reversible' || type === 'cloze'
   const raw = stripApBlockId(line).trim()
-  const noHeading = isCard && NH_RE.test(raw)
+  const noHeading = (isCard || listCount > 0) && NH_RE.test(raw)
   NH_RE.lastIndex = 0
   const t = noHeading ? raw.replace(NH_RE, ' ').replace(/[ \t]{2,}/g, ' ').trim() : raw
   const meta = isCard && (
     <CardMeta type={type} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} flag={ankiFlag}
-      suspendedCards={suspendedCards} cardCount={cardCount} noHeading={noHeading} showType={showType} />
+      suspendedCards={suspendedCards} cardCount={cardCount} noHeading={noHeading} showType={showType} listCount={listCount} />
   )
 
   // Cells come from the shared parseTableRow rather than a local copy. The
@@ -559,6 +612,18 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
   if (type === 'bullet') {
     const m = t.match(/^\s*[-*]\s+(.+)$/)
     return <div className="block-list-item"><span className="block-bullet">•</span><span dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} /></div>
+  }
+
+  if (type === 'list-item') {
+    const m = t.match(/^\+\s+(.*)$/)
+    // Each item is a card of its own: its own capsule (lapses, flag, ⓢ, ITEM).
+    return (
+      <div className="block-card block-lol-row">
+        <div className="block-card-body block-list-item block-lol-item"><span className="block-lol-caret" aria-hidden="true">+</span><span dangerouslySetInnerHTML={formatInlineProp(m ? m[1] : t, mediaDir)} /></div>
+        <CardMeta type="item" noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} flag={ankiFlag}
+          suspendedCards={suspendedCards} cardCount={cardCount} noHeading={false} showType={showType} />
+      </div>
+    )
   }
 
   if (type === 'numbered') {
@@ -808,6 +873,9 @@ function syncBlockTextareaHeight(el) {
 
 const Block = React.memo(function Block({
   blockId,
+  listCount = 0,
+  listNoteId = null,
+  listSummary = '',
   line,
   type,
   focused,
@@ -996,7 +1064,7 @@ const Block = React.memo(function Block({
         ) : codeInfo ? (
           <CodeRow type={type} info={codeInfo} active={codeActive} text={actualText} depth={codeSplit ? codeSplit.depth : 0} />
         ) : (
-          <RenderBlock line={stripLineMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} showType={showType} />
+          <RenderBlock line={stripLineMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} showType={showType} listCount={listCount} listNoteId={listNoteId} listSummary={listSummary} />
         )}
       </div>
     </div>
@@ -1308,6 +1376,16 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       for (let i = blk.open + 1; i < blk.close; i++) {
         parsed[i] = { ...parsed[i], type: 'code-line', noteId: null, code: { ...base, html: html[i - blk.open - 1] } }
       }
+    }
+
+    // List cards: a line with "+ " children is one note with a card per item.
+    // b.list says which list a parent or item line belongs to (listCards.js).
+    const lists = listLines(lines, cardRefIndex)
+    for (let i = 0; i < parsed.length; i++) {
+      const L = parsed[i].code ? null : lists.get(i) || null
+      parsed[i].list = L
+      parsed[i].listCount = L?.kind === 'parent' ? L.count : 0
+      parsed[i].listNoteId = L?.kind === 'parent' ? L.noteId : null
     }
 
     const hiddenIndices = new Set()
@@ -1834,6 +1912,26 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       if (e.shiftKey) return
       e.preventDefault()
       const cursorPos = e.target.selectionStart
+      // A "+ " list item carries on as another item; Enter on an empty one
+      // ends the list, leaving a plain line where it was.
+      const itemHead = !codeRole && actualText.match(/^\+\s+/)
+      if (itemHead && !actualText.slice(itemHead[0].length).trim()) {
+        lines[index] = attachApSuffix(leadingSpaces, currentApSuf)
+        onChange(lines.join('\n'))
+        focusCaretRef.current = 0
+        return
+      }
+      if (itemHead && cursorPos >= itemHead[0].length) {
+        const [top, bottom] = splitLineKeepingAnchor(leadingSpaces, actualText.slice(0, cursorPos), actualText.slice(cursorPos), currentApSuf)
+        lines[index] = top
+        lines.splice(index + 1, 0, attachApSuffix(leadingSpaces + '+ ' + stripApBlockId(bottom).slice(leadingSpaces.length), extractApBlockSuffix(bottom)))
+        onChange(lines.join('\n'))
+        setTimeout(() => {
+          focusCaretRef.current = 2
+          setFocusedIndex(index + 1)
+        }, 10)
+        return
+      }
       const [before, after] = keepMarksOnTop(actualText.slice(0, cursorPos), actualText.slice(cursorPos))
       const [top, bottom] = splitLineKeepingAnchor(leadingSpaces, before, after, currentApSuf)
       lines[index] = top
@@ -3189,7 +3287,18 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   const showCardCounts = settings?.show_heading_card_counts !== false
   const showSuspended = settings?.show_suspended_cards !== false
   const lineFlagList = useMemo(() => lineFlags(allLines), [allLines])
-  const statsOf = useCallback((b) => (b?.noteId != null && noteStats ? noteStats[String(b.noteId)] || null : null), [noteStats])
+  // Anki's numbers for a line: its card's note, or for a list (b.list), the
+  // whole list note on the parent and one item's card on an item line.
+  const statsOf = useCallback((b) => {
+    if (!b || !noteStats) return null
+    const isCardType = b.type === 'basic' || b.type === 'reversible' || b.type === 'cloze'
+    if (!isCardType && b.list) {
+      const st = b.list.noteId != null ? noteStats[String(b.list.noteId)] || null : null
+      if (!st || b.list.kind === 'parent') return st
+      return b.list.anchor ? st.items?.[b.list.anchor] || null : null
+    }
+    return b.noteId != null ? noteStats[String(b.noteId)] || null : null
+  }, [noteStats])
   const headingInfo = useMemo(() => {
     const suspendedOf = (i) => {
       const st = statsOf(blocks[i])
@@ -3207,10 +3316,33 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   // line is weak or a leech when its note's status says so.
   const showWeakMarkers = settings?.weak_spot_markers !== false
   const weakOf = useCallback((b) => {
-    if (!showWeakMarkers || b?.noteId == null || !noteStats) return null
-    const st = noteStats[String(b.noteId)]
+    if (!showWeakMarkers || !b) return null
+    // A list's parent line isn't marked itself: its weak items are, and its
+    // capsule shows the weakest one.
+    const isCardType = b.type === 'basic' || b.type === 'reversible' || b.type === 'cloze'
+    if (!isCardType && b.list?.kind === 'parent') return null
+    const st = statsOf(b)
     return st && st.status ? st : null
-  }, [showWeakMarkers, noteStats])
+  }, [showWeakMarkers, statsOf])
+
+  // A list parent's capsule: the weakest item, how many items carry each
+  // flag, and how many are suspended -- Anki's numbers once the list is in
+  // Anki, the paper's own flags until then. Packed into a string for Block.
+  const listSummaryOf = useCallback((b, st) => {
+    const counts = new Map()
+    if (st && Array.isArray(st.flags)) {
+      for (const f of st.flags) if (f) counts.set(f, (counts.get(f) || 0) + 1)
+    } else {
+      for (const j of b.list?.items || []) {
+        const f = lineFlagList[j] || 0
+        if (f) counts.set(f, (counts.get(f) || 0) + 1)
+      }
+    }
+    const flags = [...counts].sort((x, y) => x[0] - y[0]).map(([f, n]) => `${f}:${n}`).join(',')
+    const weak = showWeakMarkers && st?.status ? st : null
+    const suspended = showSuspended && st ? st.suspended_cards || 0 : 0
+    return [weak ? weak.status : '', weak ? weak.lapses || 0 : 0, suspended, st?.cards || 0, flags].join('|')
+  }, [lineFlagList, showWeakMarkers, showSuspended])
 
   // "Weak lines only" (the bottom-bar button): weak lines plus the headings
   // they sit under, whatever is folded. null when the filter is off.
@@ -3228,6 +3360,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       if (weakOf(b)) {
         visible.add(i)
         path.forEach((h) => visible.add(h.index))
+        // A weak list item keeps its prompt in view.
+        if (b.list?.kind === 'item') visible.add(b.list.parent)
       }
     })
     return visible
@@ -3328,12 +3462,15 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         const hidden = weakVisible ? !weakVisible.has(i) : b.isHidden
         const weak = weakOf(b)
         const isCard = displayType === 'basic' || displayType === 'reversible' || displayType === 'cloze'
-        const st = isCard ? statsOf(b) : null
+        const isItem = !b.code && b.list?.kind === 'item'
+        const isListParent = !isCard && !b.code && b.list?.kind === 'parent'
+        const st = isCard || isItem ? statsOf(b) : null
         const lineFlag = lineFlagList[i] || 0
         // The capsule's flag: what Anki has once the card is there (a flag
         // cleared in Anki shows as cleared), the paper's own until then.
-        const cardFlag = !isCard ? 0 : st ? ankiFlagOf(st.flags) : lineFlag
+        const cardFlag = !(isCard || isItem) ? 0 : st ? ankiFlagOf(st.flags) : lineFlag
         const suspendedCards = showSuspended && st ? (st.suspended_cards || 0) : 0
+        const listSummary = isListParent ? listSummaryOf(b, statsOf(b)) : ''
         const head = headingInfo.get(i)
         const headSus = showSuspended && head
           ? (head.allSuspended ? 'All suspended' : head.suspended ? `${head.suspended} of ${head.cards} suspended` : '')
@@ -3365,7 +3502,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 mediaDir={mediaDir}
                 onImageResize={handleImageResize}
                 onTableResize={handleTableResize}
-                noteId={(displayType === 'basic' || displayType === 'reversible' || displayType === 'cloze') ? b.noteId : null}
+                noteId={isCard ? b.noteId : isItem ? b.list.noteId : null}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
@@ -3386,6 +3523,9 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 ankiFlag={cardFlag}
                 suspendedCards={suspendedCards}
                 cardCount={st?.cards || 0}
+                listSummary={listSummary}
+                listCount={b.listCount || 0}
+                listNoteId={b.listNoteId || null}
                 headCards={showCardCounts && head ? head.cards : 0}
                 headSus={headSus}
                 showType={showCardBadges}

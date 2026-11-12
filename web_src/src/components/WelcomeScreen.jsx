@@ -137,7 +137,7 @@ export default function WelcomeScreen({
           )}
         </section>
 
-        {/* ── Start here: the four ways to mark a line. The full guide has a
+        {/* ── Start here: the five ways to mark a line. The full guide has a
             window of its own (the Guide button in the sidebar). ── */}
         <section className="home-panel welcome-ref home-start">
           <div className="home-start-head">
@@ -147,12 +147,13 @@ export default function WelcomeScreen({
             </button>
           </div>
           <p className="welcome-ref-blurb">
-            There are four ways to mark a line. Write the rest of your notes normally — anything
+            There are five ways to mark a line. Write the rest of your notes normally — anything
             you don't mark stays plain text. When you're ready, press Ctrl+G and your cards appear in Anki.
           </p>
           <Ref code="Question >> Answer" tone="basic">Asks you the question, shows the answer.</Ref>
           <Ref code="Term <> Definition" tone="reversible">Asks you both ways round.</Ref>
           <Ref code="Blood loss causes {{anemia}}" tone="cloze">Hides the words in braces and asks you to fill in the gap.</Ref>
+          <Ref code={<>Steps in order{'\n'}{'    '}+ First{'\n'}{'    '}+ Second</>} tone="list">A list, recalled item by item in order. Each + item is its own card with its own schedule.</Ref>
           <Ref code="# Heading" tone="heading">A title. It organizes your notes and never becomes a card.</Ref>
         </section>
 

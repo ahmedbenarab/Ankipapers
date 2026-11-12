@@ -6,11 +6,12 @@ export default function BottomToolbar({ cardCounts, viewMode, modifiedAt, draftC
   const [localIsSaving, setLocalIsSaving] = useState(false)
   const [localIsGenerating, setLocalIsGenerating] = useState(false)
 
-  const total = (cardCounts?.basic || 0) + (cardCounts?.reversible || 0) + (cardCounts?.cloze || 0)
+  const total = (cardCounts?.basic || 0) + (cardCounts?.reversible || 0) + (cardCounts?.cloze || 0) + (cardCounts?.list || 0)
   const parts = []
   if (cardCounts?.basic) parts.push(`${cardCounts.basic} basic`)
   if (cardCounts?.reversible) parts.push(`${cardCounts.reversible} reversible`)
   if (cardCounts?.cloze) parts.push(`${cardCounts.cloze} cloze`)
+  if (cardCounts?.list) parts.push(`${cardCounts.list} list`)
 
   // Wrap the save function to trigger the UI lock
   const handleSave = async (e) => {

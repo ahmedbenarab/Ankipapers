@@ -1284,6 +1284,15 @@ textarea.block-input.block-input-textarea {
 .card-meta-type.is-reversible { color: var(--reversible); background: rgba(var(--reversible-rgb), 0.12); }
 [data-theme="light"] .card-meta-type.is-reversible { background: rgba(var(--reversible-rgb), 0.10); }
 .card-meta-type.is-cloze { color: var(--pink); background: rgba(var(--pink-rgb), 0.12); }
+/* List cards: the parent's capsule and the caret that marks each "+ " item. */
+.card-meta-type.is-list { color: var(--accent); background: rgba(var(--tint-rgb), 0.12); }
+.card-meta-type.is-item { color: var(--accent); background: rgba(var(--tint-rgb), 0.12); }
+/* A list parent's flags: one flag per color, each with how many items. */
+.card-meta-flags { gap: 6px; }
+.card-meta-flag-count { display: inline-flex; align-items: center; gap: 2px; }
+.block-card.block-lol-row { padding: 0; align-items: center; }
+.block-card.block-list-parent { padding: 0; align-items: center; }
+.block-lol-caret { color: var(--accent); font-weight: 800; flex-shrink: 0; width: 0.7em; text-align: center; }
 .block-card-browser-btn {
   background: transparent; border: none; color: var(--text-muted);
   cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center;
@@ -1742,6 +1751,7 @@ textarea.block-input.block-input-textarea {
 .welcome-ref-code.is-basic { color: var(--green); }
 .welcome-ref-code.is-reversible { color: var(--reversible); }
 .welcome-ref-code.is-cloze { color: var(--pink); }
+.welcome-ref-code.is-list { color: var(--accent); white-space: pre; }
 .welcome-ref-code.is-heading { color: var(--accent); }
 .welcome-ref-code.is-key { color: var(--orange); }
 .welcome-ref-code.is-muted { color: var(--text-muted); }

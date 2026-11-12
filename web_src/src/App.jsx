@@ -8,6 +8,7 @@ import {
   getNoteStats, unsuspendNote, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
 } from './bridge'
 import { buildOutline } from './outline'
+import { listLines, weakCardCount } from './listCards'
 import { buildCardRefIndex, resolveNoteIdFromIndex } from './crossLink'
 import Sidebar from './components/Sidebar'
 import EditorHeader from './components/EditorHeader'
@@ -1223,7 +1224,7 @@ export default function App() {
   useEffect(() => { setWeakOnly(false); setVisibleLine(0) }, [paper?.id])
 
   const weakCount = useMemo(
-    () => (weakMarkersOn && noteStats ? Object.values(noteStats).filter((s) => s && s.status).length : 0),
+    () => (weakMarkersOn && noteStats ? weakCardCount(noteStats) : 0),
     [noteStats, weakMarkersOn],
   )
   useEffect(() => { if (weakCount === 0) setWeakOnly(false) }, [weakCount])
@@ -1239,8 +1240,12 @@ export default function App() {
   const outline = useMemo(() => {
     if (!paper) return null
     const idx = buildCardRefIndex(paper.card_refs)
+    // List items have no card_refs entry of their own (listCards.js).
+    const lists = listLines(paper.content.split('\n'), idx, noteStats)
     const statsAt = (i, line) => {
       if (!noteStats) return null
+      const L = lists.get(i)
+      if (L?.kind === 'item') return L.stats
       const nid = resolveNoteIdFromIndex(i, line, idx)
       return nid != null ? noteStats[String(nid)] || null : null
     }

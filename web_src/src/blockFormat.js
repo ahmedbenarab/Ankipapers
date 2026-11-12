@@ -121,6 +121,48 @@ export function findTextReplacement(text, caret, replacements) {
 }
 
 // ─── Block type detection ───────────────────────────
+export const LIST_ITEM_RE = /^\+\s+\S/
+
+/**
+ * List cards in a document: every line that has "+ " items, with the items.
+ * An item is a "+ " line one level deeper than the line; under a heading, the
+ * "+ " lines flush below it count too. Lines in `codeLines` (a Set or Map of
+ * indices inside ``` blocks) are never items or parents. Mirrors
+ * list_items_for() in core/parser.py. Returns [{ parent, items: [index] }].
+ */
+export function findLists(lines, codeLines = new Set()) {
+  const rows = lines.map((line, i) => {
+    const text = String(line ?? '').replace(/<!--ap:[0-9a-f-]{36}-->\s*$/i, '')
+    const lead = (text.match(/^[ \t]*/) || [''])[0]
+    const code = codeLines.has(i)
+    const type = code ? 'code' : getBlockType(text)
+    return { blank: !text.trim(), type, indent: Math.floor(lead.replace(/\t/g, '    ').length / 4) }
+  })
+  const out = []
+  for (let i = 0; i < rows.length; i++) {
+    const p = rows[i]
+    if (p.blank || p.type === 'code' || p.type === 'list-item') continue
+    const items = []
+    let j = i + 1
+    if (p.type === 'heading') {
+      while (j < rows.length && rows[j].type === 'list-item' && rows[j].indent === p.indent) items.push(j++)
+    }
+    for (let k = j; k < rows.length; k++) {
+      const c = rows[k]
+      if (c.blank) continue
+      if (c.indent <= p.indent) break
+      if (c.indent === p.indent + 1 && c.type === 'list-item') items.push(k)
+    }
+    if (items.length) out.push({ parent: i, items })
+  }
+  return out
+}
+
+/** For each line that has "+ " items, how many: Map(lineIndex -> count). */
+export function listItemCounts(lines, codeLines = new Set()) {
+  return new Map(findLists(lines, codeLines).map((l) => [l.parent, l.items.length]))
+}
+
 export function getBlockType(line) {
   // The size marker lives past the header row's final pipe, so it has to come
   // off before the table test — otherwise a sized table stops being a table.
@@ -134,6 +176,9 @@ export function getBlockType(line) {
   if (t.match(/^```/)) return 'code-fence'
   if (t.match(/^---$|^\*\*\*$|^___$/)) return 'divider'
   if (t.match(/^>\s/)) return 'blockquote'
+  // "+ item" under a line: an item of that line's list card, never a card of
+  // its own. Mirrors LIST_ITEM_PATTERN in core/parser.py.
+  if (LIST_ITEM_RE.test(t)) return 'list-item'
   const stripped = t.replace(/^\s*[-*]\s+/, '')
   if (stripped.match(/^.+?\s*<>\s*.+$/)) return 'reversible'
   if (BASIC_CARD_RE.test(stripped)) return 'basic'

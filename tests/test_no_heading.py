@@ -17,8 +17,9 @@ import core.card_manager as cm  # noqa: E402
 from core.paper import Paper, CardReference  # noqa: E402
 from core.parser import extract_cards  # noqa: E402
 
-NAMES = ("AnkiPapers Basic", "AnkiPapers Reversible", "AnkiPapers Cloze")
-FIELD_COUNT = {"AnkiPapers Basic": 5, "AnkiPapers Reversible": 5, "AnkiPapers Cloze": 4}
+NAMES = ("AnkiPapers Basic", "AnkiPapers Reversible", "AnkiPapers Cloze", "AnkiPapers List")
+FIELD_COUNT = {"AnkiPapers Basic": 5, "AnkiPapers Reversible": 5, "AnkiPapers Cloze": 4,
+               "AnkiPapers List": 5}
 
 
 class FakeNote:

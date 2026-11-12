@@ -22,6 +22,7 @@ class CardReference:
         block_id: Optional[str] = None,
         derived_hash: Optional[str] = None,
         flag_applied: int = 0,
+        item_flags_applied: Optional[Dict[str, int]] = None,
     ):
         self.line_index = line_index
         self.card_type = card_type  # "basic" or "cloze"
@@ -38,6 +39,10 @@ class CardReference:
         # The Anki flag Generate last set on this note's cards from a heading
         # (0 = none). Lets a flag cleared in Anki stay cleared: see core/flags.py.
         self.flag_applied = flag_applied
+        # List cards only: the flag Generate last set on each item's card,
+        # by the item's anchor. Items are flagged one by one (an item's own
+        # flag beats the list's), so one number for the note isn't enough.
+        self.item_flags_applied: Dict[str, int] = dict(item_flags_applied or {})
 
     def to_dict(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {
@@ -53,6 +58,9 @@ class CardReference:
             d["derived_hash"] = self.derived_hash
         if self.flag_applied:
             d["flag_applied"] = self.flag_applied
+        applied = {k: v for k, v in self.item_flags_applied.items() if v}
+        if applied:
+            d["item_flags_applied"] = applied
         return d
 
     @classmethod
@@ -66,6 +74,7 @@ class CardReference:
             block_id=data.get("block_id"),
             derived_hash=data.get("derived_hash"),
             flag_applied=int(data.get("flag_applied") or 0),
+            item_flags_applied={str(k): int(v or 0) for k, v in (data.get("item_flags_applied") or {}).items()},
         )
 
 

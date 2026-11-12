@@ -16,7 +16,8 @@ import { flagNumber, flagWordIn } from './cardFlags'
  * any card suspended (`suspended`) and whether every card under it is
  * (`allSuspended`). `flag` is the heading's own <!--flag:...--> (cardFlags.js).
  */
-const CARD_TYPES = new Set(['basic', 'reversible', 'cloze'])
+// A list's "+ " items are cards too, one each (a list's parent line is not).
+const CARD_TYPES = new Set(['basic', 'reversible', 'cloze', 'list-item'])
 
 function headingText(line) {
   return stripApBlockId(line).trim()
