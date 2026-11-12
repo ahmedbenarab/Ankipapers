@@ -1569,6 +1569,7 @@ textarea.block-input.block-input-textarea {
 .home-cardbar .is-basic { background: var(--green); }
 .home-cardbar .is-reversible { background: var(--reversible); }
 .home-cardbar .is-cloze { background: var(--pink); }
+.home-cardbar .is-list { background: var(--accent); }
 
 /* Section headings */
 .home-section-title {

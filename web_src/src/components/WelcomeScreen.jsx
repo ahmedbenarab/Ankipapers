@@ -46,14 +46,14 @@ function greeting() {
 
 // Count each paper's marked lines by kind (one Anki note per line).
 function cardCounts(papers) {
-  const c = { basic: 0, reversible: 0, cloze: 0 }
+  const c = { basic: 0, reversible: 0, cloze: 0, list: 0 }
   for (const p of papers) {
     for (const r of p.card_refs || []) {
       if (r.card_type in c) c[r.card_type]++
       else c.basic++
     }
   }
-  return { ...c, total: c.basic + c.reversible + c.cloze }
+  return { ...c, total: c.basic + c.reversible + c.cloze + c.list }
 }
 
 export default function WelcomeScreen({
@@ -171,9 +171,11 @@ export default function WelcomeScreen({
               <span className="is-basic" style={{ width: pct(counts.basic) }} />
               <span className="is-reversible" style={{ width: pct(counts.reversible) }} />
               <span className="is-cloze" style={{ width: pct(counts.cloze) }} />
+              <span className="is-list" style={{ width: pct(counts.list) }} />
             </div>
             <div className="home-tile-sub">
               {counts.basic.toLocaleString()} basic · {counts.reversible.toLocaleString()} reversible · {counts.cloze.toLocaleString()} cloze
+              {counts.list ? ` · ${counts.list.toLocaleString()} list` : ''}
             </div>
           </div>
           <button
