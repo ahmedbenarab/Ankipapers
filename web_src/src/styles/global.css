@@ -555,6 +555,42 @@ body.is-sidebar-snapping .sidebar-resizer { background: var(--orange); }
 .fmt-btn.accent-blue:hover { color: var(--reversible); filter: brightness(1.2); }
 .fmt-sep { width: 1px; height: 20px; background: var(--border); margin: 0 5px; flex-shrink: 0; }
 
+/* ─── Toolbar timer (just after the deck picker) ─── */
+.toolbar-timer-icon { margin-left: 4px; flex-shrink: 0; }
+.toolbar-timer { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.toolbar-timer .toolbar-timer-icon { margin-right: 1px; }
+.timer-box {
+  display: flex; align-items: center; height: 26px; padding: 0 8px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 13px; cursor: text; outline: none;
+  user-select: none; transition: border-color var(--transition);
+}
+.timer-box:hover, .timer-box:focus { border-color: var(--accent); }
+.timer-box.done { border-color: var(--red); color: var(--red); background: rgba(231, 76, 60, 0.14); }
+.timer-digit { width: 8px; text-align: center; position: relative; }
+.timer-digit.ghost { color: var(--text-muted); opacity: 0.6; }
+.timer-caret-end { width: 2px; }
+.timer-digit.caret::before {
+  content: ''; position: absolute; left: -1px; top: 2px; bottom: 2px; width: 1.5px;
+  background: var(--accent); animation: timer-caret 1s steps(2) infinite;
+}
+@keyframes timer-caret { 50% { opacity: 0; } }
+.timer-colon { width: 6px; text-align: center; color: var(--text-muted); }
+.header-icon-btn.timer-play { color: var(--accent); }
+
+/* The popup at 00:00 */
+.timer-done { min-width: 280px; max-width: 320px; text-align: center; padding: 22px 22px 18px; }
+.timer-done-ring {
+  width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 12px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--red); background: rgba(231, 76, 60, 0.14);
+}
+.timer-done-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.timer-done-text { font-size: 13px; color: var(--text-secondary); margin: 6px 0 18px; }
+.timer-done-actions { display: flex; gap: 8px; }
+.timer-done-actions .modal-btn { flex: 1; justify-content: center; }
+
 /* ─── Editor Area ────────────────────────────────── */
 .editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 

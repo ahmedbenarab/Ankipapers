@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef } from 'react'
 import { Pencil, Eye, FileInput, FileText, Link2, ChevronLeft, ChevronRight, Sparkles, MessageCircle, Paperclip, BookOpen, Globe, Share } from 'lucide-react'
 import FormattingButtons from './FormattingToolbar'
+import ToolbarTimer from './ToolbarTimer'
 
 // Lucide has no PDF icon, so this one is drawn to match its icons: a page in
 // a 2px outline with a solid "PDF" label across its lower half. The letters
@@ -24,7 +25,7 @@ function PdfIcon({ size = 16 }) {
   )
 }
 
-// The one toolbar under the tabs: back/forward, deck picker and formatting
+// The one toolbar under the tabs: back/forward, deck picker, timer and formatting
 // buttons on the left (the deck picker stretches to fill the row), view
 // mode / import-export / panel toggles pinned to the right. The paper is
 // renamed from its tab (right-click → Rename), not from here.
@@ -64,6 +65,10 @@ export default function EditorHeader({ canBack, canForward, onBack, onForward, d
         {decks.map(d => <option key={d} value={d}>{d}</option>)}
         {!decks.includes(deckName) && <option value={deckName}>{deckName}</option>}
       </select>
+
+      {/* The countdown timer: one icon until clicked. Opening it narrows the
+          deck picker, which stretches to fill the row, so nothing wraps. */}
+      <ToolbarTimer />
 
       <div className="fmt-sep" />
 

@@ -29,6 +29,8 @@ import Settings from './components/Settings'
 import GuideWindow from './components/GuideWindow'
 import TagShortcutsDialog from './components/TagShortcutsDialog'
 import GenerateConflictModal from './components/GenerateConflictModal'
+import { TimerDonePopup } from './components/ToolbarTimer'
+import { timer } from './timerStore'
 import FolderGenerateDialog from './components/FolderGenerateDialog'
 import TableDialog from './components/TableDialog'
 import SourcesPanel from './components/SourcesPanel'
@@ -1019,6 +1021,13 @@ export default function App() {
     if (JSON.stringify(settingsRef.current.open_tabs || []) === JSON.stringify(openTabs)) return
     persistSidebarPrefs({ open_tabs: openTabs })
   }, [openTabs, persistSidebarPrefs])
+
+  // The toolbar timer remembers the last time started, across restarts.
+  useEffect(() => { timer.setLast(settings?.timer_last) }, [settings?.timer_last])
+  useEffect(() => {
+    timer.onLastChange((mmss) => persistSidebarPrefs({ timer_last: mmss }))
+    return () => timer.onLastChange(null)
+  }, [persistSidebarPrefs])
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
@@ -2089,6 +2098,7 @@ export default function App() {
         />
       )}
       {toast && <Toast message={toast.message} type={toast.type} />}
+      <TimerDonePopup />
     </div>
   )
 }
