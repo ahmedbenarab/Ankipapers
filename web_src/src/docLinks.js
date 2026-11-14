@@ -20,6 +20,9 @@
  * still resolves.
  */
 
+import { stripTagMarks } from './qbankTags.js'
+import { stripFlagComments } from './cardFlags.js'
+
 // Hidden stable-id suffix on a line: "<!--ap:uuid-->" at end of line.
 // This deliberately does NOT swallow the whitespace in front of the anchor.
 // It used to (/\s*<!--ap:.../), and since the anchor sits at the end of the
@@ -46,14 +49,45 @@ export function extractApBlockSuffix(line) {
 }
 
 /**
+ * Put an anchor (from extractApBlockSuffix) back on the end of a line body,
+ * flush against its text.
+ *
+ * Only whitespace AFTER the text is dropped. A body that is nothing but
+ * whitespace is a blank line's indentation, and it stays: trimming it whole
+ * used to send the blank line Enter leaves above a card to the left margin,
+ * level with the H1s, and made Tab on it do nothing (the four spaces it
+ * added were trimmed straight back off).
+ */
+export function attachApSuffix(body, suf) {
+  const b = body ?? ''
+  return suf ? b.replace(/(\S)\s+$/, '$1') + suf : b
+}
+
+/**
+ * Enter: split a line at the caret into the line that stays and the line
+ * below, both at the line's indentation (`indent`). `suf` is the line's
+ * anchor, if any.
+ *
+ * The anchor belongs to the text. Enter at the very start of a line pushes
+ * all of that text down, so the anchor (and the Anki card and links it ties
+ * to) goes down with it, leaving the blank line above anchor-free. Split
+ * anywhere else and it stays on the top line, where it always was.
+ */
+export function splitLineKeepingAnchor(indent, before, after, suf) {
+  const down = !before && !!after
+  return [
+    attachApSuffix(indent + before, down ? '' : suf),
+    attachApSuffix(indent + after, down ? suf : ''),
+  ]
+}
+
+/**
  * Change a line's indentation without disturbing its anchor: `shift` gets the
  * line with the anchor taken off, and the anchor goes back on exactly once.
  * Re-appending it to the unstripped line added a copy on every Tab press.
  */
 export function reindentKeepingAnchor(line, shift) {
-  const suf = extractApBlockSuffix(line)
-  const shifted = shift(stripApBlockId(line))
-  return suf ? shifted.replace(/\s+$/, '') + suf : shifted
+  return attachApSuffix(shift(stripApBlockId(line)), extractApBlockSuffix(line))
 }
 
 export function mergeEditedWithApSuffix(editedBody, originalLine) {
@@ -89,8 +123,7 @@ export function ensureApBlockId(line) {
   const existing = getApBlockId(line)
   if (existing) return { line, blockId: existing, changed: false }
   const blockId = uuid4()
-  const body = (line ?? '').replace(/\s+$/, '')
-  return { line: `${body}<!--ap:${blockId}-->`, blockId, changed: true }
+  return { line: attachApSuffix(line, `<!--ap:${blockId}-->`), blockId, changed: true }
 }
 
 // ── Link syntax ──────────────────────────────────────────────────────────
@@ -217,7 +250,7 @@ export function buildTargetIndex(papers) {
     const lines = String(paper.content || '').split('\n')
     const stack = [] // [{ level, text }]
     lines.forEach((raw, lineIndex) => {
-      const m = stripApBlockId(raw).trim().match(HEADER_RE)
+      const m = stripFlagComments(stripTagMarks(stripApBlockId(raw))).trim().match(HEADER_RE)
       if (!m) return
       const level = m[1].length
       // A header can itself contain a link now; show its phrase, not markdown.
@@ -288,7 +321,7 @@ export function headerTextAt(content, lineIndex) {
   const lines = String(content || '').split('\n')
   const raw = lines[lineIndex]
   if (raw == null) return ''
-  const t = stripApBlockId(raw).trim()
+  const t = stripFlagComments(stripTagMarks(stripApBlockId(raw))).trim()
   const m = t.match(HEADER_RE)
   return stripApLinkSyntax(m ? m[2].trim() : t)
 }
@@ -497,7 +530,7 @@ export function findHeaderRenames(before, after) {
     for (const raw of String(content || '').split('\n')) {
       const id = getApBlockId(raw)
       if (!id) continue
-      const m = stripApBlockId(raw).trim().match(HEADER_RE)
+      const m = stripFlagComments(stripTagMarks(stripApBlockId(raw))).trim().match(HEADER_RE)
       if (m) out.set(id, stripApLinkSyntax(m[2].trim()))
     }
     return out

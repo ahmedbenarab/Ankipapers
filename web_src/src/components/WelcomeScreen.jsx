@@ -46,14 +46,14 @@ function greeting() {
 
 // Count each paper's marked lines by kind (one Anki note per line).
 function cardCounts(papers) {
-  const c = { basic: 0, reversible: 0, cloze: 0 }
+  const c = { basic: 0, reversible: 0, cloze: 0, list: 0 }
   for (const p of papers) {
     for (const r of p.card_refs || []) {
       if (r.card_type in c) c[r.card_type]++
       else c.basic++
     }
   }
-  return { ...c, total: c.basic + c.reversible + c.cloze }
+  return { ...c, total: c.basic + c.reversible + c.cloze + c.list }
 }
 
 export default function WelcomeScreen({
@@ -137,7 +137,7 @@ export default function WelcomeScreen({
           )}
         </section>
 
-        {/* ── Start here: the four ways to mark a line. The full guide has a
+        {/* ── Start here: the five ways to mark a line. The full guide has a
             window of its own (the Guide button in the sidebar). ── */}
         <section className="home-panel welcome-ref home-start">
           <div className="home-start-head">
@@ -147,12 +147,13 @@ export default function WelcomeScreen({
             </button>
           </div>
           <p className="welcome-ref-blurb">
-            There are four ways to mark a line. Write the rest of your notes normally — anything
+            There are five ways to mark a line. Write the rest of your notes normally — anything
             you don't mark stays plain text. When you're ready, press Ctrl+G and your cards appear in Anki.
           </p>
           <Ref code="Question >> Answer" tone="basic">Asks you the question, shows the answer.</Ref>
           <Ref code="Term <> Definition" tone="reversible">Asks you both ways round.</Ref>
           <Ref code="Blood loss causes {{anemia}}" tone="cloze">Hides the words in braces and asks you to fill in the gap.</Ref>
+          <Ref code={<>Steps in order{'\n'}{'    '}+ First{'\n'}{'    '}+ Second</>} tone="list">A list, recalled item by item in order. Each + item is its own card with its own schedule.</Ref>
           <Ref code="# Heading" tone="heading">A title. It organizes your notes and never becomes a card.</Ref>
         </section>
 
@@ -170,9 +171,11 @@ export default function WelcomeScreen({
               <span className="is-basic" style={{ width: pct(counts.basic) }} />
               <span className="is-reversible" style={{ width: pct(counts.reversible) }} />
               <span className="is-cloze" style={{ width: pct(counts.cloze) }} />
+              <span className="is-list" style={{ width: pct(counts.list) }} />
             </div>
             <div className="home-tile-sub">
               {counts.basic.toLocaleString()} basic · {counts.reversible.toLocaleString()} reversible · {counts.cloze.toLocaleString()} cloze
+              {counts.list ? ` · ${counts.list.toLocaleString()} list` : ''}
             </div>
           </div>
           <button

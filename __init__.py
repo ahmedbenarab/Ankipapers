@@ -182,3 +182,9 @@ gui_hooks.media_check_did_finish.append(protect_paper_media)
 from .gui.occlusion import notify_occlusions_changed  # noqa: E402
 
 gui_hooks.operation_did_execute.append(notify_occlusions_changed)
+
+# Review a list card ("+ " items) item by item, in order, on one screen.
+# See gui/list_review.py.
+from .gui.list_review import install as install_list_review  # noqa: E402
+
+install_list_review()

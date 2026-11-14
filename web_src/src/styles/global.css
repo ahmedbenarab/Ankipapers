@@ -555,6 +555,42 @@ body.is-sidebar-snapping .sidebar-resizer { background: var(--orange); }
 .fmt-btn.accent-blue:hover { color: var(--reversible); filter: brightness(1.2); }
 .fmt-sep { width: 1px; height: 20px; background: var(--border); margin: 0 5px; flex-shrink: 0; }
 
+/* ─── Toolbar timer (just after the deck picker) ─── */
+.toolbar-timer-icon { margin-left: 4px; flex-shrink: 0; }
+.toolbar-timer { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.toolbar-timer .toolbar-timer-icon { margin-right: 1px; }
+.timer-box {
+  display: flex; align-items: center; height: 26px; padding: 0 8px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 13px; cursor: text; outline: none;
+  user-select: none; transition: border-color var(--transition);
+}
+.timer-box:hover, .timer-box:focus { border-color: var(--accent); }
+.timer-box.done { border-color: var(--red); color: var(--red); background: rgba(231, 76, 60, 0.14); }
+.timer-digit { width: 8px; text-align: center; position: relative; }
+.timer-digit.ghost { color: var(--text-muted); opacity: 0.6; }
+.timer-caret-end { width: 2px; }
+.timer-digit.caret::before {
+  content: ''; position: absolute; left: -1px; top: 2px; bottom: 2px; width: 1.5px;
+  background: var(--accent); animation: timer-caret 1s steps(2) infinite;
+}
+@keyframes timer-caret { 50% { opacity: 0; } }
+.timer-colon { width: 6px; text-align: center; color: var(--text-muted); }
+.header-icon-btn.timer-play { color: var(--accent); }
+
+/* The popup at 00:00 */
+.timer-done { min-width: 280px; max-width: 320px; text-align: center; padding: 22px 22px 18px; }
+.timer-done-ring {
+  width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 12px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--red); background: rgba(231, 76, 60, 0.14);
+}
+.timer-done-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.timer-done-text { font-size: 13px; color: var(--text-secondary); margin: 6px 0 18px; }
+.timer-done-actions { display: flex; gap: 8px; }
+.timer-done-actions .modal-btn { flex: 1; justify-content: center; }
+
 /* ─── Editor Area ────────────────────────────────── */
 .editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -648,6 +684,47 @@ body.is-sidebar-snapping .sidebar-resizer { background: var(--orange); }
 .block-row-inner:has(.block-h1) .block-line-number { padding-top: 19px; }
 .block-row-inner:has(.block-h2) .block-line-number { padding-top: 17px; }
 .block-row-inner:has(.block-h3) .block-line-number { padding-top: 15px; }
+
+/* ─── Flags and suspension beside the lines ──────────
+   Anki's flag colors, the same in every theme and scheme: a dark, high-
+   contrast red, neon orange, neon green, then the four the app rarely uses. */
+:root {
+  --flag-1: #c1121f; --flag-2: #ff5f1f; --flag-3: #39ff14; --flag-4: #1e90ff;
+  --flag-5: #ff4fd8; --flag-6: #00e5d4; --flag-7: #9b5cff;
+}
+/* The gutter rule in the color of the heading flag over the line. It grows
+   into the gutter (1px border + 2px inset), so the text never moves. */
+.block-line-number.has-flag {
+  border-right-color: var(--line-flag);
+  box-shadow: inset -2px 0 0 var(--line-flag);
+}
+/* Hover bubbles for a card capsule's compartments and a heading's card
+   count. Beside the mark, not under it: each editor row clips what spills
+   past its edges (.block-row-inner), so a bubble below would be cut off. */
+.heading-count { position: relative; cursor: help; }
+.card-meta-seg:hover::after,
+.heading-count:hover::after {
+  content: attr(data-tip); position: absolute; right: calc(100% + 8px); top: 50%;
+  transform: translateY(-50%); z-index: 30; width: max-content; white-space: nowrap;
+  background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);
+  font: 400 11.5px/1.4 var(--font-sans); letter-spacing: 0; padding: 6px 9px; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+/* Suspended card lines fade (Settings → Suspended Card Opacity); the
+   capsule stays at full strength so ⓢ is easy to find. */
+.block-row-wrapper.is-suspended :is(.block-card, .block-cloze-wrapper) > :not(.card-meta-side) {
+  opacity: var(--suspended-opacity, 0.85);
+}
+/* H1–H3: card count and suspended summary at the right edge. */
+.block-heading-wrap { position: relative; }
+.block-heading.has-meta { padding-right: 190px; }
+.heading-meta {
+  position: absolute; right: 4px; top: calc(50% - 3px); transform: translateY(-50%);
+  display: flex; align-items: center; gap: 6px;
+  font: 400 10.5px var(--font-sans); letter-spacing: 0; color: var(--text-muted); white-space: nowrap;
+}
+.heading-count { background: var(--bg-hover); border-radius: 10px; padding: 1px 7px; }
+.heading-suspended { display: flex; align-items: center; gap: 3px; }
 .source-editor-highlight.with-line-numbers,
 .source-editor.with-line-numbers { padding-left: 64px; }
 .source-editor-highlight.with-line-numbers {
@@ -1174,7 +1251,8 @@ textarea.block-input.block-input-textarea {
 .block-h1 strong, .block-h2 strong, .block-h3 strong,
 .block-h4 strong, .block-h5 strong, .block-h6 strong { color: inherit; font-weight: 800; }
 
-.block-paragraph { color: var(--text-secondary); line-height: 1.7; margin: 2px 0; }
+/* Same 4px side padding as card lines, so plain text starts where card text does. */
+.block-paragraph { color: var(--text-secondary); line-height: 1.7; margin: 2px 0; padding: 0 4px; }
 .block-paragraph strong { color: var(--text-primary); font-weight: 700; }
 .block-paragraph em { color: var(--text-primary); opacity: 0.88; font-style: italic; }
 .block-paragraph del { color: var(--text-muted); }
@@ -1195,44 +1273,69 @@ textarea.block-input.block-input-textarea {
 .block-list-item strong { color: var(--text-primary); font-weight: 700; }
 .block-list-item code { background: var(--code-bg); color: #e17055; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono); font-size: 13px; }
 
-/* Card blocks */
-.block-card {
-  background: transparent; border: none;
-  border-radius: 0; padding: 2px 80px 2px 4px; /* Added 80px right padding so text doesn't overlap the badge */
-  margin: 0; position: relative;
+/* Card blocks. The text and the card's capsule sit side by side, so the
+   text wraps before the capsule however many compartments it has. */
+.block-card,
+.block-cloze-wrapper {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: transparent; border: none; border-radius: 0;
+  padding: 2px 4px; margin: 0; position: relative;
 }
-.block-card-basic { border-left: none; }
-.block-card-reversible { border-left: none; }
-
-.block-card-type {
-  position: absolute;
-  right: 4px;
-  top: 2px;
-  /* Pins the badge to the top right of the line */
-  margin-bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  /* Space between the bubble and the external link icon */
+.block-card-body,
+.block-cloze-wrapper > .block-cloze { flex: 1; min-width: 0; }
+.card-meta-side {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  margin-top: 1px; margin-left: auto;
 }
 
-/* New rule to style the text as a bubble */
-.block-card-type span {
-  background: var(--bg-hover);
-  color: var(--accent);
-  border: 1px solid var(--accent-glow);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+/* The capsule: lapses | flag | ⓢ | N̸ | type, divided by thin rules. Its
+   outline is a light tint of the color scheme; each compartment keeps its
+   own meaning's color. Hover bubbles open to the left, beside it, because
+   each editor row clips what spills past its top and bottom. */
+.card-meta {
+  display: inline-flex; align-items: stretch; height: 20px;
+  border: 1px solid rgba(var(--tint-rgb), 0.32); border-radius: 11px;
+  background: rgba(var(--tint-rgb), 0.05);
 }
+.card-meta-seg {
+  position: relative; display: flex; align-items: center; gap: 3px;
+  padding: 0 7px; cursor: help;
+  font: 700 10px var(--font-sans); color: var(--text-secondary); white-space: nowrap;
+}
+.card-meta-seg + .card-meta-seg { border-left: 1px solid rgba(var(--tint-rgb), 0.28); }
+.card-meta-seg:first-child { border-radius: 10px 0 0 10px; }
+.card-meta-seg:last-child { border-radius: 0 10px 10px 0; }
+.card-meta-seg:only-child { border-radius: 10px; }
+.card-meta-lapses { background: var(--weak-pill-bg); color: var(--weak-pill-fg); }
+.card-meta-lapses.is-leech { background: var(--leech-pill-bg); color: var(--leech-pill-fg); }
+.card-meta-sus { font-size: 13px; font-weight: 400; line-height: 1; color: var(--text-muted); }
+/* N̸: an N with a diagonal stroke through it. */
+.card-meta-nh { position: relative; font-size: 10.5px; font-weight: 800; line-height: 1; padding: 0 1px; }
+.card-meta-nh::after {
+  content: ''; position: absolute; left: -2px; right: -2px; top: 50%;
+  border-top: 1.5px solid currentColor; transform: rotate(-55deg);
+}
+.card-meta-type { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; }
+.card-meta-type.is-basic { color: var(--green-light); background: rgba(130, 224, 170, 0.12); }
+[data-theme="light"] .card-meta-type.is-basic { color: #228B22; background: rgba(34, 139, 34, 0.12); }
+.card-meta-type.is-reversible { color: var(--reversible); background: rgba(var(--reversible-rgb), 0.12); }
+[data-theme="light"] .card-meta-type.is-reversible { background: rgba(var(--reversible-rgb), 0.10); }
+.card-meta-type.is-cloze { color: var(--pink); background: rgba(var(--pink-rgb), 0.12); }
+/* List cards: the parent's capsule and the caret that marks each "+ " item. */
+.card-meta-type.is-list { color: var(--accent); background: rgba(var(--tint-rgb), 0.12); }
+.card-meta-type.is-item { color: var(--accent); background: rgba(var(--tint-rgb), 0.12); }
+/* A list parent's flags: one flag per color, each with how many items. */
+.card-meta-flags { gap: 6px; }
+.card-meta-flag-count { display: inline-flex; align-items: center; gap: 2px; }
+.block-card.block-lol-row { padding: 0; align-items: center; }
+.block-card.block-list-parent { padding: 0; align-items: center; }
+.block-lol-caret { color: var(--accent); font-weight: 800; flex-shrink: 0; width: 0.7em; text-align: center; }
 .block-card-browser-btn {
   background: transparent; border: none; color: var(--text-muted);
   cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center;
   transition: all 0.2s;
 }
-.block-card-browser-btn:hover { background: var(--accent); color: white; }
+.block-card-browser-btn:hover { background: var(--accent); color: var(--on-accent); }
 
 .block-card-front,
 .block-card-back {
@@ -1262,25 +1365,6 @@ textarea.block-input.block-input-textarea {
   border-top: none;
   /* Removed the horizontal dashed line */
   margin-left: 8px;
-}
-
-.block-cloze-wrapper {
-  background: transparent;
-  border-left: none;
-  padding: 2px 80px 2px 4px;
-  /* Added 80px right padding to prevent overlap */
-  border-radius: 0;
-    /* Synced border-radius */
-    margin: 0;
-    /* Removed the 10px top/bottom margin */
-  position: relative;
-}
-
-/* Styles the new CLOZE bubble to match your pink cloze theme */
-.block-card-type.cloze-type span {
-  color: var(--pink);
-  background: rgba(var(--pink-rgb), 0.12);
-  border-color: rgba(var(--pink-rgb), 0.3);
 }
 
 .block-cloze-browser-btn {
@@ -1522,6 +1606,7 @@ textarea.block-input.block-input-textarea {
 .home-cardbar .is-basic { background: var(--green); }
 .home-cardbar .is-reversible { background: var(--reversible); }
 .home-cardbar .is-cloze { background: var(--pink); }
+.home-cardbar .is-list { background: var(--accent); }
 
 /* Section headings */
 .home-section-title {
@@ -1704,6 +1789,7 @@ textarea.block-input.block-input-textarea {
 .welcome-ref-code.is-basic { color: var(--green); }
 .welcome-ref-code.is-reversible { color: var(--reversible); }
 .welcome-ref-code.is-cloze { color: var(--pink); }
+.welcome-ref-code.is-list { color: var(--accent); white-space: pre; }
 .welcome-ref-code.is-heading { color: var(--accent); }
 .welcome-ref-code.is-key { color: var(--orange); }
 .welcome-ref-code.is-muted { color: var(--text-muted); }
@@ -1818,6 +1904,39 @@ textarea.block-input.block-input-textarea {
 .toggle-text { font-size: 13px; color: var(--text-secondary); }
 .settings-field-hint {
   font-size: 11px; color: var(--text-muted); line-height: 1.4; margin: 0 0 8px 0;
+}
+
+/* Settings -> Cards -> Tag Shortcuts: shortcut -> tag, one row each. */
+.tag-shortcuts { margin-bottom: 16px; }
+.tag-shortcuts-head,
+.tag-shortcuts-row {
+  display: grid; grid-template-columns: 96px 14px minmax(0, 1fr) 28px;
+  align-items: center; column-gap: 8px;
+}
+.tag-shortcuts-head {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 4px;
+}
+.tag-shortcuts-row { row-gap: 2px; margin-bottom: 8px; }
+.tag-shortcuts-row .modal-input { margin-bottom: 0; padding: 6px 10px; font-family: var(--font-mono, monospace); font-size: 13px; }
+.tag-shortcuts-arrow { color: var(--text-muted); }
+.tag-shortcuts-remove {
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
+  color: var(--text-muted); cursor: pointer; transition: all var(--transition);
+}
+.tag-shortcuts-remove:hover { color: var(--red); border-color: var(--border); background: var(--bg-hover); }
+.tag-shortcuts-example {
+  grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-muted); font-family: var(--font-mono, monospace);
+}
+.tag-shortcuts-add { margin-top: 2px; padding: 5px 12px; }
+.tag-shortcuts-problem { margin: 8px 0 0 0; font-size: 12px; color: var(--red); line-height: 1.4; }
+.tag-overrides-modal { width: 460px; max-width: 94vw; }
+.tag-overrides-modal .tag-shortcuts { margin-bottom: 12px; }
+.tag-overrides-key {
+  font-family: var(--font-mono, monospace); font-size: 13px; color: var(--text-primary);
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-tertiary);
 }
 
 .generate-conflict-modal { max-width: 480px; }
@@ -2233,40 +2352,6 @@ textarea.block-input.block-input-textarea {
   color: var(--reversible);
 }
 
-/* ── BASIC CARD BUBBLE ── */
-
-/* Dark Mode (Default): Light Green */
-.block-card-basic .block-card-type span {
-  color: var(--green-light);
-  background: rgba(130, 224, 170, 0.12);
-  /* Faint tint of green-light */
-  border-color: rgba(130, 224, 170, 0.3);
-}
-
-/* Light Mode: Forest Green */
-[data-theme="light"] .block-card-basic .block-card-type span {
-  color: #228B22;
-  background: rgba(34, 139, 34, 0.12);
-  /* Faint tint of Forest Green */
-  border-color: rgba(34, 139, 34, 0.3);
-}
-
-/* ── REVERSIBLE CARD BUBBLE ── */
-
-/* Dark Mode (Default): amber */
-.block-card-reversible .block-card-type span {
-  color: var(--reversible);
-  background: rgba(var(--reversible-rgb), 0.12);
-  border-color: rgba(var(--reversible-rgb), 0.3);
-}
-
-/* Light Mode: deep amber */
-[data-theme="light"] .block-card-reversible .block-card-type span {
-  color: var(--reversible);
-  background: rgba(var(--reversible-rgb), 0.10);
-  border-color: rgba(var(--reversible-rgb), 0.3);
-}
-
 /* ─── Context / Heading ─────────────────────────── */
 /* Add to the bottom of global.css */
 .ap-meta-heading,
@@ -2660,13 +2745,6 @@ sub, sup { line-height: 0; }
 .block-row { scroll-margin-top: 16px; }
 .block-row.block-row-weak { box-shadow: inset 3px 0 0 var(--weak); background: var(--weak-bg); }
 .block-row.block-row-leech { box-shadow: inset 3px 0 0 var(--leech); background: var(--leech-bg); }
-.block-card.has-weak, .block-cloze-wrapper.has-weak { padding-right: 200px; }
-.block-card-type .weak-pill {
-  font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
-  border-radius: 999px; padding: 1px 8px; margin-right: 6px; white-space: nowrap;
-  background: var(--weak-pill-bg); color: var(--weak-pill-fg);
-}
-.block-card-type .weak-pill.is-leech { background: var(--leech-pill-bg); color: var(--leech-pill-fg); }
 
 /* Bottom bar: "N weak spots" filters the paper down to them */
 .bottom-center { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -2725,6 +2803,11 @@ sub, sup { line-height: 0; }
 .outline-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--weak); flex-shrink: 0; }
 .outline-dot.is-leech { background: var(--leech); }
 .outline-count { font-size: 10.5px; color: var(--text-muted); font-weight: 400; flex-shrink: 0; }
+.settings-range { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.settings-range input[type="range"] { flex: 1; accent-color: var(--accent); }
+.settings-range-value { min-width: 38px; text-align: right; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.outline-flag { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.outline-item.is-suspended { opacity: var(--suspended-opacity, 0.85); }
 .outline-empty { font-size: 12px; color: var(--text-muted); padding: 14px 10px; line-height: 1.5; }
 
 /* The Outline tab's search box with no paper open */

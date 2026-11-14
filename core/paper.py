@@ -21,6 +21,8 @@ class CardReference:
         synced: bool = False,
         block_id: Optional[str] = None,
         derived_hash: Optional[str] = None,
+        flag_applied: int = 0,
+        item_flags_applied: Optional[Dict[str, int]] = None,
     ):
         self.line_index = line_index
         self.card_type = card_type  # "basic" or "cloze"
@@ -34,6 +36,13 @@ class CardReference:
         # the hash identical while the note no longer matched the paper — and
         # Generate could not tell that from someone editing the note in Anki.
         self.derived_hash = derived_hash
+        # The Anki flag Generate last set on this note's cards from a heading
+        # (0 = none). Lets a flag cleared in Anki stay cleared: see core/flags.py.
+        self.flag_applied = flag_applied
+        # List cards only: the flag Generate last set on each item's card,
+        # by the item's anchor. Items are flagged one by one (an item's own
+        # flag beats the list's), so one number for the note isn't enough.
+        self.item_flags_applied: Dict[str, int] = dict(item_flags_applied or {})
 
     def to_dict(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {
@@ -47,6 +56,11 @@ class CardReference:
             d["block_id"] = self.block_id
         if self.derived_hash:
             d["derived_hash"] = self.derived_hash
+        if self.flag_applied:
+            d["flag_applied"] = self.flag_applied
+        applied = {k: v for k, v in self.item_flags_applied.items() if v}
+        if applied:
+            d["item_flags_applied"] = applied
         return d
 
     @classmethod
@@ -59,6 +73,8 @@ class CardReference:
             synced=data.get("synced", False),
             block_id=data.get("block_id"),
             derived_hash=data.get("derived_hash"),
+            flag_applied=int(data.get("flag_applied") or 0),
+            item_flags_applied={str(k): int(v or 0) for k, v in (data.get("item_flags_applied") or {}).items()},
         )
 
 
@@ -98,6 +114,9 @@ class Paper:
         self.modified_at = time.time()
         self.tags: List[str] = []
         self.show_chapter_bar = False
+        # This paper's own tags for Tag Shortcuts, {"tags": {"uw": ...}, "old": [...]};
+        # empty = the folder's, then Settings' (core/qbank.py)
+        self.tag_shortcuts: Dict[str, Any] = {}
         # When save_paper() last wrote this paper. A paper is kept in two
         # places (the collection and the files on disk), and this is how a
         # read tells which copy is current. modified_at cannot: Generate
@@ -155,6 +174,7 @@ class Paper:
             "modified_at": self.modified_at,
             "tags": self.tags,
             "show_chapter_bar": bool(getattr(self, "show_chapter_bar", False)),
+            "tag_shortcuts": getattr(self, "tag_shortcuts", None) or {},
             "saved_at": float(getattr(self, "saved_at", 0.0) or 0.0),
             "title_tag": getattr(self, "title_tag", None),
         }
@@ -176,6 +196,7 @@ class Paper:
         paper.modified_at = data.get("modified_at", time.time())
         paper.tags = data.get("tags", [])
         paper.show_chapter_bar = bool(data.get("show_chapter_bar", False))
+        paper.tag_shortcuts = data.get("tag_shortcuts") or {}
         paper.saved_at = float(data.get("saved_at") or 0.0)
         paper.title_tag = data.get("title_tag") or None
         return paper

@@ -55,10 +55,10 @@ class ReviewStats(unittest.TestCase):
     def setUp(self):
         # Note 10: a reversible note, one card lapsed 4x. Note 20: a suspended leech.
         cards = [
-            # id, nid, lapses, factor, queue, type, due
-            (101, 10, 4, 1700, 2, 2, 105),
-            (102, 10, 1, 2500, 2, 2, 110),
-            (201, 20, 8, 1300, -1, 2, 90),
+            # id, nid, lapses, factor, queue, type, due, flags
+            (101, 10, 4, 1700, 2, 2, 105, 1),
+            (102, 10, 1, 2500, 2, 2, 110, 0),
+            (201, 20, 8, 1300, -1, 2, 90, 3),
         ]
         revlog = [  # id (ms), cid, ease
             (1_000_000, 101, 1), (2_000_000, 101, 3), (3_000_000, 101, 1),
@@ -84,6 +84,13 @@ class ReviewStats(unittest.TestCase):
         self.assertEqual(b["status"], "leech")
         self.assertTrue(b["suspended"])
         self.assertIsNone(b["next_due_days"])        # suspended cards aren't due
+
+    def test_card_counts_suspension_and_flags(self):
+        stats = cm.note_review_stats(self.col, [10, 20])
+        self.assertEqual((stats["10"]["cards"], stats["10"]["suspended_cards"]), (2, 0))
+        self.assertEqual(stats["10"]["flags"], [1, 0])
+        self.assertEqual((stats["20"]["cards"], stats["20"]["suspended_cards"]), (1, 1))
+        self.assertEqual(stats["20"]["flags"], [3])
 
     def test_no_notes_no_queries(self):
         self.assertEqual(cm.note_review_stats(SimpleNamespace(), []), {})

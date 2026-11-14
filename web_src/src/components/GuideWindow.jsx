@@ -16,6 +16,7 @@ import {
   Globe,
   Share,
   Image as ImageIcon,
+  Flag,
 } from 'lucide-react'
 import { Ref, RefGroup } from './GuideRefs'
 
@@ -34,6 +35,7 @@ const GUIDE_TOPICS = [
   { id: 'start', icon: Sparkles, label: 'Start here' },
   { id: 'flashcards', icon: FileText, label: 'Making flashcards' },
   { id: 'occlusion', icon: ImageIcon, label: 'Image occlusion' },
+  { id: 'qbank', icon: Flag, label: 'Question tags and flags' },
   { id: 'organizing', icon: Hash, label: 'Organizing notes' },
   { id: 'code', icon: Braces, label: 'Code blocks' },
   { id: 'linking', icon: Link2, label: 'Linking papers' },
@@ -87,7 +89,7 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
               <RefGroup
                 icon={Sparkles}
                 title="Start here"
-                blurb="There are four ways to mark a line. Write the rest of your notes normally — anything you don't mark stays plain text. When you're ready, press Ctrl+G and your cards appear in Anki."
+                blurb="There are five ways to mark a line. Write the rest of your notes normally — anything you don't mark stays plain text. When you're ready, press Ctrl+G and your cards appear in Anki."
               >
                 <Ref code="Question >> Answer" tone="basic">
                   Asks you the question, shows the answer.
@@ -97,6 +99,9 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                 </Ref>
                 <Ref code="Blood loss causes {{anemia}}" tone="cloze">
                   Hides the words in braces and asks you to fill in the gap.
+                </Ref>
+                <Ref code={<>Steps in order{'\n'}{'    '}+ First{'\n'}{'    '}+ Second</>} tone="list">
+                  A list, recalled item by item in order. Each + item is its own card with its own schedule.
                 </Ref>
                 <Ref code="# Heading" tone="heading">
                   A title. It organizes your notes and never becomes a card.
@@ -128,6 +133,15 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                   c1 is hidden on one card, everything marked c2 on another. Give two
                   phrases the same number and they're hidden together.
                 </Ref>
+                <Ref code={<>Prompt line{'\n'}{'    '}+ First item{'\n'}{'    '}+ Second item</>} tone="list">
+                  A list card, for things you have to know in order. Each + line indented
+                  under the prompt is an item and its own card, with its own schedule. In
+                  review the prompt stays on screen: Space shows the next item, you rate
+                  it, and the next one comes up until the list is done. Items that aren't
+                  due are skipped but stay visible as context. Under a heading, the + lines
+                  can sit right below it without an indent. Press Enter at the end of an
+                  item to start the next one, and Enter on an empty one to end the list.
+                </Ref>
                 <Ref code="&& Extra explanation" tone="muted">
                   Background reading rather than a question. Indent it underneath a
                   card and it appears alongside the answer when you're reviewing. It
@@ -145,18 +159,95 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                 <Ref code="[[tag]]" tone="muted">
                   Puts an Anki tag on that card, written as <code>AnkiPapers::tag</code>.
                   Anything you'd normally use tags for — searching, building a filtered
-                  deck before an exam — works the same way here.
+                  deck before an exam — works the same way here. Double brackets are only
+                  for tags: <code>[[Paper title]]</code> no longer links to a paper.
                 </Ref>
                 <Ref code="[[NH]]" tone="muted">
                   Short for “no heading”. Every card normally shows the headings it came
                   from at the top, which is helpful context. Add this when that context
-                  would give the answer away.
+                  would give the answer away. On the page it shows as N̸ in the card's
+                  capsule at the right of the line.
                 </Ref>
                 <Ref code="Card style" tone="muted">
                   How your cards look in Anki. Settings → Card Style switches between
                   the built-in Basic look and Solarized Styling: a calm, color-coded
                   style that is light in Anki's light mode and dark in dark mode.
                   Saving restyles every card at once, phone included after a sync.
+                </Ref>
+                <Ref code="⚠ 3 | ⚑ | ⓢ | N̸ | BASIC" tone="muted">
+                  The capsule at the right of each card line holds everything about the
+                  card: lapses (red for a leech), its flag in Anki, ⓢ when suspended, N̸
+                  for <code>[[NH]]</code>, and what kind of card it is. Only what applies
+                  shows; rest the pointer on a part for what it means. Settings → Editor
+                  turns off the type, weak spots or ⓢ.
+                </Ref>
+              </RefGroup>
+          )}
+          {topic === 'qbank' && (
+              <RefGroup
+                icon={Flag}
+                title="Question tags and flags"
+                blurb="Two words you can type at the end of a heading, or of any line of text. Each turns into a hidden note on the line, and Add Cards to Anki applies it to the line's own card and every card underneath: everything indented below it, smaller headings included."
+              >
+                <Ref code="## Heading uw::3252" tone="heading">
+                  Type a tag shortcut, two colons and a question number, then Space or
+                  Return. The word disappears into the heading, and every card under it
+                  gets the shortcut's tag with the number: <code>UWorldABIM::3252</code>,
+                  so Anki's Browser can find all the cards from that question. Add more
+                  the same way, or several at once with <code>uw::3252,4410</code>.
+                  Searching for 3252 finds the heading.
+                </Ref>
+                <Ref code="Changing the ids" tone="key">
+                  Click into the heading to see them, and edit or delete them there. An
+                  id you take off loses its tag from those cards the next time you add
+                  cards to Anki. Tags you added yourself in Anki are never touched.
+                </Ref>
+                <Ref code="Tag Shortcuts" tone="key">
+                  In Settings → Cards: each shortcut and the tag it stands for, starting
+                  with <code>uw</code> → <code>UWorldABIM</code>. Add one per question
+                  bank, say <code>ab</code> → <code>AMBOSS</code>. Each shortcut and each
+                  tag can be used only once. Rename a tag and your cards move to the new
+                  name the next time you add cards to Anki.
+                </Ref>
+                <Ref code="Right-click → Tag shortcuts…" tone="key">
+                  Give a shortcut its own tag in one paper or folder, say{' '}
+                  <code>uw</code> → <code>UWorld_Step1</code> for a Step 1 folder.
+                </Ref>
+                <Ref code="## Heading flag:red" tone="heading">
+                  Flags every card under the heading in Anki. Use any of Anki's flags:
+                  red, orange, green, blue, pink, turquoise or purple, or their numbers
+                  1–7. Typing a new one replaces the old; <code>flag:none</code> takes it
+                  off. Where flagged headings sit inside each other, the nearest one wins.
+                </Ref>
+                <Ref code="Card line flag:blue" tone="basic">
+                  Both words work on a card's own line too, on a + list item (flagging
+                  just that item), and on a bullet with cards under it. A card's own flag
+                  beats its heading's, so a blue card stays
+                  blue under a red heading. Question tags add up instead: the card gets
+                  its own ids and the heading's. Pictures, bare links, dividers, tables
+                  and <code>```</code> fences don't take them.
+                </Ref>
+                <Ref code="The colored line" tone="key">
+                  The line beside the line numbers takes the flag's color from the heading
+                  down through everything under it, and a card with its own flag shows its
+                  own color there. Each card's capsule shows the flag Anki has for it.
+                </Ref>
+                <Ref code="ⓢ" tone="key">
+                  A card line whose cards are suspended in Anki fades and gets this mark;
+                  hover it to see what it means. A heading whose cards are all suspended says
+                  “All suspended”. Settings → Editor turns it off and sets how faded the
+                  lines look.
+                </Ref>
+                <Ref code="Back from Anki" tone="key">
+                  Suspend, unsuspend or unflag cards in Anki's Browser, then come back to
+                  Anki Papers: the colored lines, ⓢ marks and counts catch up on their own,
+                  without adding cards again.
+                </Ref>
+                <Ref code="Unflagging in Anki" tone="key">
+                  A flag you clear in Anki stays cleared: Add Cards to Anki only sets a flag
+                  when you change it in the paper. Clear every card a flagged heading or card
+                  line covers and that line loses its flag too, and the message afterwards
+                  says which.
                 </Ref>
               </RefGroup>
           )}
@@ -212,6 +303,12 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                   under it, it starts folded up — click the little arrow beside it to
                   open it.
                 </Ref>
+                <Ref code="Enter" tone="key">
+                  Starts a new line at the same indentation as the one you were on.
+                  Pressed at the very start of a line, it moves that line down and leaves
+                  a blank one above it, still at the same indentation, and a card on the
+                  line keeps its link to Anki.
+                </Ref>
                 <Ref code="| Column | Column |" tone="muted">
                   A table. Write the rows with pipes between the cells and put a row
                   of <code>| --- | --- |</code> under the first one to make it the
@@ -230,7 +327,14 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                 </Ref>
                 <Ref code="Outline" tone="key">
                   The Papers | Outline switch at the top of the sidebar lists this paper's
-                  headings with their card counts. Click one to jump there.
+                  headings with their card counts. Click one to jump there. A dot left of a
+                  heading shows its flag color, and a topic whose cards are all suspended is
+                  faded.
+                </Ref>
+                <Ref code="The number on a heading" tone="key">
+                  Every H1, H2 and H3 shows how many cards sit under it, at its right edge;
+                  hover it for “This section has 29 cards.” Settings → Editor → Card Counts
+                  hides them.
                 </Ref>
                 <Ref code="Weak spots" tone="key">
                   Lines whose cards you keep missing in Anki are marked amber (red for a
@@ -325,7 +429,8 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                   Select the words you want to turn into a link, right-click them, and
                   choose <b>Create link…</b> Then search for the paper or heading it
                   should point at. The words stay readable — they just become
-                  underlined.
+                  underlined. This is the only way to link papers now; double brackets
+                  are for tags.
                 </Ref>
                 <Ref code="Following a link" tone="key">
                   Double-click it. You land on the exact line it points at, not just
@@ -588,6 +693,10 @@ export default function GuideWindow({ topic: topicProp = 'start', onTopicChange,
                     back. Turn it off in Settings.
                   </Ref>
                 )}
+                <Ref code="uw::3252 / flag:red + Space" tone="key">
+                  At the end of a heading or card line: tag or flag that card and every card
+                  under it when you add cards to Anki. See Question tags and flags.
+                </Ref>
                 <Ref code="Ctrl+Shift+D" tone="key">
                   Draft cards from the lines you've selected, or the line you're on.
                 </Ref>

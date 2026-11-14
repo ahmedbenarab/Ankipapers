@@ -17,6 +17,7 @@ import time
 from typing import List, Dict, Optional, Any
 
 from .paper import Paper, CardReference
+from .qbank import FOLDER_SETTINGS_NAME
 
 COLLECTION_PAPERS_KEY = "ankipapers.papers.v1"
 COLLECTION_FOLDERS_KEY = "ankipapers.folders.v1"
@@ -835,6 +836,7 @@ def _render_paper_meta(paper) -> str:
         "created_at": getattr(paper, "created_at", None),
         "modified_at": getattr(paper, "modified_at", None),
         "show_chapter_bar": bool(getattr(paper, "show_chapter_bar", False)),
+        "tag_shortcuts": getattr(paper, "tag_shortcuts", None) or {},
         "saved_at": float(getattr(paper, "saved_at", 0.0) or 0.0),
         "title_tag": getattr(paper, "title_tag", None),
         "card_refs": refs,
@@ -1068,6 +1070,7 @@ def _read_paper_from_files(md_path: str, root: str = None) -> Optional[Paper]:
     )
     paper.tags = list(meta.get("tags") or [])
     paper.show_chapter_bar = bool(meta.get("show_chapter_bar", False))
+    paper.tag_shortcuts = meta.get("tag_shortcuts") or {}
     if meta.get("created_at"):
         paper.created_at = meta["created_at"]
     if meta.get("modified_at"):
@@ -1219,9 +1222,9 @@ def _merge_dir(src: str, dst: str) -> None:
                 os.rmdir(s)
             except OSError:
                 pass  # something stayed behind rather than overwrite; keep it
-        elif name == ".DS_Store":
+        elif name in (".DS_Store", FOLDER_SETTINGS_NAME):
             try:
-                os.remove(s)  # Finder's view settings; the destination has its own
+                os.remove(s)  # Finder's view / folder settings; the destination has its own
             except OSError:
                 pass
 
@@ -1237,8 +1240,12 @@ def prune_folder_dir(folder_path: str, root: str = None) -> bool:
     removed = False
     while path != root and path.startswith(root + os.sep):
         try:
-            if not os.path.isdir(path) or os.listdir(path):
+            # A folder's own settings file (its question-tag prefix) is not a
+            # document: a folder holding only that is empty, and it goes too.
+            if not os.path.isdir(path) or [n for n in os.listdir(path) if n != FOLDER_SETTINGS_NAME]:
                 break
+            if os.path.exists(os.path.join(path, FOLDER_SETTINGS_NAME)):
+                os.remove(os.path.join(path, FOLDER_SETTINGS_NAME))
             os.rmdir(path)
             removed = True
             path = os.path.dirname(path)

@@ -8,6 +8,7 @@ import {
   getNoteStats, unsuspendNote, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
 } from './bridge'
 import { buildOutline } from './outline'
+import { listLines, weakCardCount } from './listCards'
 import { buildCardRefIndex, resolveNoteIdFromIndex } from './crossLink'
 import Sidebar from './components/Sidebar'
 import EditorHeader from './components/EditorHeader'
@@ -26,7 +27,10 @@ import ErrorBoundary from './components/ErrorBoundary'
 import Toast from './components/Toast'
 import Settings from './components/Settings'
 import GuideWindow from './components/GuideWindow'
+import TagShortcutsDialog from './components/TagShortcutsDialog'
 import GenerateConflictModal from './components/GenerateConflictModal'
+import { TimerDonePopup } from './components/ToolbarTimer'
+import { timer } from './timerStore'
 import FolderGenerateDialog from './components/FolderGenerateDialog'
 import TableDialog from './components/TableDialog'
 import SourcesPanel from './components/SourcesPanel'
@@ -34,6 +38,8 @@ import { sourceKey } from './sourceKeys'
 import ChapterStrip from './components/ChapterStrip'
 import FolderSourceDialog from './components/FolderSourceDialog'
 import AskPanel from './components/AskPanel'
+import FeynmanPanel from './components/FeynmanPanel'
+import { setFeynmanMarks, feynmanDateStamp } from './feynman'
 import {
   srcForPaper, srcAttachPaperFile, srcAttachPaperWeb, srcDetachPaper, srcCreateChapterPaper,
   srcFoldersSummary, srcFolderAttachFile, srcFolderDetach,
@@ -623,6 +629,8 @@ export default function App() {
   const [linkRequest, setLinkRequest] = useState(null)
   const [showLinksPanel, setShowLinksPanel] = useState(false)
   const [showAskPanel, setShowAskPanel] = useState(false)
+  const [showFeynman, setShowFeynman] = useState(false)
+  const [feynmanTopic, setFeynmanTopic] = useState(null) // heading line the Feynman panel is on
   const [showGraph, setShowGraph] = useState(false)
 
   // ─── Web browser ─────────────────────────────────
@@ -986,6 +994,7 @@ export default function App() {
 
   const handleSaveSettings = useCallback(async (newSettings) => {
     const res = await saveSettingsBridge(newSettings)
+    if (res?.error) { showToast(`Settings not saved: ${res.error}`, 'error'); return }
     setSettings(newSettings)
     document.documentElement.dataset.theme = newSettings.editor_theme || 'dark'
     document.documentElement.dataset.scheme = newSettings.color_scheme || 'carolina'
@@ -1012,6 +1021,13 @@ export default function App() {
     if (JSON.stringify(settingsRef.current.open_tabs || []) === JSON.stringify(openTabs)) return
     persistSidebarPrefs({ open_tabs: openTabs })
   }, [openTabs, persistSidebarPrefs])
+
+  // The toolbar timer remembers the last time started, across restarts.
+  useEffect(() => { timer.setLast(settings?.timer_last) }, [settings?.timer_last])
+  useEffect(() => {
+    timer.onLastChange((mmss) => persistSidebarPrefs({ timer_last: mmss }))
+    return () => timer.onLastChange(null)
+  }, [persistSidebarPrefs])
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
@@ -1165,7 +1181,20 @@ export default function App() {
       const parts = [`${result.created} created`]
       if (result.updated) parts.push(`${result.updated} updated`)
       if (result.deleted) parts.push(`${result.deleted} removed`)
-      showToast(parts.join(', '), 'success')
+      if (result.flags_changed) parts.push(`${result.flags_changed} flagged or unflagged`)
+      // Lines (headings or cards) whose <!--flag:...--> came off because every
+      // card they flag was unflagged in Anki (core/flags.py).
+      const unflagged = result.unflagged_headings || []
+      if (unflagged.length) {
+        parts.push(`flag removed from ${unflagged.length === 1 ? `“${unflagged[0]}”` : `${unflagged.length} lines`} (cleared in Anki)`)
+      }
+      // Lines with a uw::-style mark whose shortcut isn't in Settings ->
+      // Cards -> Tag Shortcuts: they tagged nothing (core/qbank.py).
+      const unknown = result.unknown_tag_lines || []
+      if (unknown.length) {
+        parts.push(`${unknown.length === 1 ? `“${unknown[0]}” uses a tag shortcut` : `${unknown.length} lines use tag shortcuts`} not in Settings, so ${unknown.length === 1 ? 'it was' : 'they were'} not tagged`)
+      }
+      showToast(parts.join(', '), unknown.length ? 'error' : 'success')
     } catch (e) {
       showToast(`Adding cards to Anki failed: ${e?.message || e}`, 'error')
     } finally {
@@ -1186,17 +1215,30 @@ export default function App() {
     () => (paper?.card_refs || []).map((r) => r.anki_note_id).filter((n) => n != null),
     [paper?.card_refs],
   )
+  // Read whether or not weak-spot markers are on: the same stats carry each
+  // card's flag and suspension, which the editor and Outline always show.
   const refreshNoteStats = useCallback(async () => {
-    if (!weakMarkersOn || !paperNoteIds.length) { setNoteStats(null); return }
+    if (!paperNoteIds.length) { setNoteStats(null); return }
     const res = await getNoteStats(paperNoteIds)
     setNoteStats(res?.stats || null)
-  }, [weakMarkersOn, paperNoteIds])
+  }, [paperNoteIds])
   useEffect(() => { refreshNoteStats() }, [refreshNoteStats])
+  // Back from Anki's Browser (suspended or unflagged something there): read
+  // again, so the gutter rule, ⓢ and counts are current without a Generate.
+  useEffect(() => {
+    window.addEventListener('focus', refreshNoteStats)
+    return () => window.removeEventListener('focus', refreshNoteStats)
+  }, [refreshNoteStats])
+  // Settings → Suspended Card Opacity, for the editor and the Outline alike.
+  useEffect(() => {
+    const pct = Math.min(100, Math.max(30, Number(settings.suspended_card_opacity) || 85))
+    document.documentElement.style.setProperty('--suspended-opacity', String(pct / 100))
+  }, [settings.suspended_card_opacity])
   useEffect(() => { setWeakOnly(false); setVisibleLine(0) }, [paper?.id])
 
   const weakCount = useMemo(
-    () => (noteStats ? Object.values(noteStats).filter((s) => s && s.status).length : 0),
-    [noteStats],
+    () => (weakMarkersOn && noteStats ? weakCardCount(noteStats) : 0),
+    [noteStats, weakMarkersOn],
   )
   useEffect(() => { if (weakCount === 0) setWeakOnly(false) }, [weakCount])
 
@@ -1211,13 +1253,24 @@ export default function App() {
   const outline = useMemo(() => {
     if (!paper) return null
     const idx = buildCardRefIndex(paper.card_refs)
-    const statusOf = (i, line) => {
+    // List items have no card_refs entry of their own (listCards.js).
+    const lists = listLines(paper.content.split('\n'), idx, noteStats)
+    const statsAt = (i, line) => {
       if (!noteStats) return null
+      const L = lists.get(i)
+      if (L?.kind === 'item') return L.stats
       const nid = resolveNoteIdFromIndex(i, line, idx)
-      return nid != null ? noteStats[String(nid)]?.status || null : null
+      return nid != null ? noteStats[String(nid)] || null : null
     }
-    return buildOutline(paper.content, statusOf)
-  }, [paper, noteStats])
+    const statusOf = (i, line) => (weakMarkersOn ? statsAt(i, line)?.status || null : null)
+    const suspendedOf = (i, line) => {
+      const st = statsAt(i, line)
+      return st ? { cards: st.cards || 0, suspended: st.suspended_cards || 0 } : null
+    }
+    const showSuspended = settings.show_suspended_cards !== false
+    return buildOutline(paper.content, statusOf, suspendedOf)
+      .map((it) => ({ ...it, faded: showSuspended && it.allSuspended }))
+  }, [paper, noteStats, weakMarkersOn, settings.show_suspended_cards])
 
   const handleGenerate = useCallback(async () => {
     const paper = paperRef.current
@@ -1281,7 +1334,7 @@ export default function App() {
 
   const runFolderGenerate = useCallback(async (folder, policy) => {
     const list = folderGenPapersRef.current
-    const totals = { created: 0, updated: 0, deleted: 0 }
+    const totals = { created: 0, updated: 0, deleted: 0, flagsChanged: 0, unflagged: 0, unknownTags: 0 }
     const failures = []
     setBusy(true, 'generating')
     try {
@@ -1300,6 +1353,9 @@ export default function App() {
             totals.created += res?.created || 0
             totals.updated += res?.updated || 0
             totals.deleted += res?.deleted || 0
+            totals.flagsChanged += res?.flags_changed || 0
+            totals.unflagged += (res?.unflagged_headings || []).length
+            totals.unknownTags += (res?.unknown_tag_lines || []).length
           }
         } catch (e) {
           failures.push({ id: p.id, title, reason: e?.message || String(e) })
@@ -1395,6 +1451,12 @@ export default function App() {
     const r = await persistPaper(next)
     if (r?.error) showToast(r.error, 'error')
   }, [persistPaper])
+
+  // ─── Question-tag prefix (sidebar right-click on a paper or folder) ───
+  // Right-click a paper or folder -> "Tag shortcuts…": its own tags for the
+  // Tag Shortcuts (TagShortcutsDialog, core/qbank.py).
+  const [tagOverridesTarget, setTagOverridesTarget] = useState(null)
+
   const activeSourceKey = paper ? activeSourceKeys[paper.id] : null
   const selectSource = useCallback((key) => {
     const pid = paperRef.current?.id
@@ -1549,6 +1611,16 @@ export default function App() {
     blockEditorRef.current.insertLinesAfter(anchor.anchorId, [`&& ${text.replace(/\s*\n+\s*/g, ' ')}`])
     showToast('Added as an && supplement', 'success')
   }, [answerAnchor])
+  // Next topic in the Feynman panel: the session's date and score go onto
+  // the heading line as hidden marks (feynman.js), replacing the last ones.
+  const handleFeynmanSave = useCallback((lineIndex, score) => {
+    const p = paperRef.current
+    if (!p) return
+    const lines = (p.content || '').split('\n')
+    if (!/^\s*#{1,6}\s/.test(lines[lineIndex] || '')) return
+    lines[lineIndex] = setFeynmanMarks(lines[lineIndex], feynmanDateStamp(), score)
+    handleContentChange(lines.join('\n'))
+  }, [handleContentChange])
   const handleDraftFromAnswer = useCallback((text, lineIndex) => {
     const anchor = answerAnchor(lineIndex)
     if (!anchor || !text) return
@@ -1691,29 +1763,33 @@ export default function App() {
       }
     }
     
-    window.openZettel = async (title) => {
-      if (!title) return
-      const targetQuery = title.trim().toLowerCase().replace(/\s+/g, ' ')
-      const p = papers.find(pp => {
-        const t = (pp.title || '').trim().toLowerCase().replace(/\s+/g, ' ')
-        return t === targetQuery
-      })
-      if (p) {
-         await handleSelectPaper(p.id)
-      } else {
-         showToast(`Paper not found: ${title}`, 'error')
-      }
-    }
+    // Opened the paper a [[title]] link named. Retired: [[...]] is a card tag, not a link to a paper (2026-10-24).
+    // window.openZettel = async (title) => {
+    //   if (!title) return
+    //   const targetQuery = title.trim().toLowerCase().replace(/\s+/g, ' ')
+    //   const p = papers.find(pp => {
+    //     const t = (pp.title || '').trim().toLowerCase().replace(/\s+/g, ' ')
+    //     return t === targetQuery
+    //   })
+    //   if (p) {
+    //      await handleSelectPaper(p.id)
+    //   } else {
+    //      showToast(`Paper not found: ${title}`, 'error')
+    //   }
+    // }
 
     return () => { 
        delete window.jumpToBlock
-       delete window.openZettel 
+       // delete window.openZettel  // retired with the [[...]] paper links
     }
   }, [handleSelectPaper, papers])
 
   // ─── Render ──────────────────────────────────────
   const aiOn = settings?.ai_enabled !== false
   aiOnRef.current = aiOn
+  // Settings → AI → Feynman panel puts the F in the toolbar (off by default).
+  const feynmanOn = aiOn && settings?.feynman_enabled === true
+  const feynmanOpen = feynmanOn && showFeynman
   const draftGroup = paper ? drafts.groupFor(paper.id) : null
   const saved = savedRef.current
   const paperDirty = !!paper && saved.id === paper.id &&
@@ -1735,6 +1811,7 @@ export default function App() {
         onRenameFolder={handleRenameFolder}
         onGenerateFolder={handleGenerateFolder}
         onShareFolder={handleShareFolder}
+        onQbankPrefix={setTagOverridesTarget}
         onMoveFolder={handleMoveFolder}
         collapsed={sidebarCollapsed}
         width={sidebarWidth}
@@ -1796,6 +1873,8 @@ export default function App() {
               sourceCount={sourcesList.length}
               showAskPanel={showAskPanel}
               onToggleAsk={() => setShowAskPanel((v) => !v)}
+              showFeynman={feynmanOpen}
+              onToggleFeynman={feynmanOn ? () => setShowFeynman((v) => !v) : null}
               showWebBrowser={showWebBrowser}
               onToggleWebBrowser={toggleWebBrowser}
               scrollable={!!settings?.toolbar_scroll}
@@ -1848,6 +1927,7 @@ export default function App() {
                   onDraftRedraft={() => drafts.redraft(paper.id)}
                   onDraftCancel={() => drafts.cancel(paper.id)}
                   onOpenAiSettings={openAiSettings}
+                  feynmanTopic={feynmanOpen ? feynmanTopic : null}
                 />
               )}
             </div>
@@ -1902,6 +1982,18 @@ export default function App() {
           onNotify={(m) => showToast(m, 'success')}
         />
       )}
+      {feynmanOpen && paper && (
+        <FeynmanPanel
+          key={paper.id}
+          paper={paper}
+          outline={outline}
+          visibleLine={visibleLine}
+          onClose={() => setShowFeynman(false)}
+          onSelectTopic={setFeynmanTopic}
+          onSaveScore={handleFeynmanSave}
+          onGoToLine={(i) => handleGoToLine(paper.id, i, { align: 'start' })}
+        />
+      )}
       {showSourcePanel && paper && (
         <>
           <div className="source-panel-resizer" onMouseDown={handleSourcePanelResizeStart} />
@@ -1932,6 +2024,10 @@ export default function App() {
       {showGuide && (
         <GuideWindow topic={guideTopic} onTopicChange={setGuideTopic} onClose={() => setShowGuide(false)}
           onOpenSettings={() => { setShowGuide(false); setSettingsSection('files'); setShowSettings(true) }} />
+      )}
+      {tagOverridesTarget && (
+        <TagShortcutsDialog target={tagOverridesTarget} onClose={() => setTagOverridesTarget(null)}
+          onSaved={() => showToast(`Tag shortcuts for “${tagOverridesTarget.name}” saved: applied at the next Add to Anki`, 'success')} />
       )}
       {showSettings && <Settings settings={settings} onSave={handleSaveSettings} onClose={() => { setShowSettings(false); setSettingsSection(null) }}
         initialSection={settingsSection}
@@ -2002,6 +2098,7 @@ export default function App() {
         />
       )}
       {toast && <Toast message={toast.message} type={toast.type} />}
+      <TimerDonePopup />
     </div>
   )
 }

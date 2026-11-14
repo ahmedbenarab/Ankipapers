@@ -25,7 +25,7 @@ class FakeModels:
         self.models = {
             n: {"name": n, "css": "old", "flds": [{"name": f} for f in FIELDS],
                 "tmpls": [{"qfmt": "", "afmt": ""}, {"qfmt": "", "afmt": ""}]}
-            for n in NAMES
+            for n in NAMES + (cm.LIST_NOTE_TYPE,)
         }
         self.saved = []
 
@@ -67,7 +67,9 @@ class EnsureNoteTypes(unittest.TestCase):
             cm.ensure_note_types(col, style)
             for n in NAMES:
                 self.assertEqual(col.models.models[n]["css"], cm.card_css(style), (style, n))
-            self.assertEqual(sorted(col.models.saved), sorted(NAMES))
+            # The List type is the same sheet plus its own rules.
+            self.assertEqual(col.models.models[cm.LIST_NOTE_TYPE]["css"], cm.card_css(style) + cm._LIST_CSS)
+            self.assertEqual(sorted(col.models.saved), sorted(NAMES + (cm.LIST_NOTE_TYPE,)))
 
     def test_default_is_basic(self):
         col = FakeCol()

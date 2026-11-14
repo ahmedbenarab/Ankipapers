@@ -272,6 +272,17 @@ export async function getWebBrowser() {
   return call('get_web_browser');
 }
 
+// A paper's ({ paper_id }) or folder's ({ folder_path }) own tags for the Tag
+// Shortcuts (core/qbank.py). get: { rows: [{ shortcut, own, inherited }] };
+// set: { ...target, tags: { uw: 'UWorld_Step1' } }, refused with { error }
+// when the table would stop being one-to-one.
+export async function getTagOverrides(target) {
+  return call('get_tag_overrides', target);
+}
+export async function setTagOverrides(args) {
+  return call('set_tag_overrides', args);
+}
+
 // Source panel
 export async function pickPdfFile() {
   return call('pick_pdf_file');
@@ -306,10 +317,11 @@ function createMockBridge() {
   const papers = demo?.papers || [
     {
       id: 'demo-1', title: 'Cell Biology',
-      content: '# Cell Biology\n\n## Organelles\n\nWhat is the powerhouse of the cell? >> Mitochondria\n\nATP <> Adenosine Triphosphate\n\nThe {{mitochondria}} is the powerhouse of the cell.\n\n{{c1::ATP}} is produced through {{c2::oxidative phosphorylation}}.\n\n## Cell Membrane\n\n- **Phospholipid bilayer** forms the basic structure\n\n> The fluid mosaic model describes membrane structure\n\n---\n\nWhat is endocytosis? >> The process by which cells absorb molecules\n',
+      content: '# Cell Biology\n\n## Organelles\n\nWhat is the powerhouse of the cell? >> Mitochondria\n\nATP <> Adenosine Triphosphate\n\nThe {{mitochondria}} is the powerhouse of the cell.\n\n{{c1::ATP}} is produced through {{c2::oxidative phosphorylation}}.\n\n## Cell Membrane\n\n- **Phospholipid bilayer** forms the basic structure\n\n> The fluid mosaic model describes membrane structure\n\n---\n\nWhat is endocytosis? >> The process by which cells absorb molecules\n\n## Epidermis\n\nLayers of the epidermis, deep to superficial [[NH]]<!--ap:a0000000-0000-4000-8000-000000000000-->\n    + Stratum basale<!--ap:a0000000-0000-4000-8000-000000000001-->\n    + Stratum spinosum<!--flag:red--><!--ap:a0000000-0000-4000-8000-000000000002-->\n    + Stratum granulosum<!--flag:red--><!--ap:a0000000-0000-4000-8000-000000000003-->\n    + Stratum lucidum<!--ap:a0000000-0000-4000-8000-000000000004-->\n    + Stratum corneum<!--flag:blue--><!--ap:a0000000-0000-4000-8000-000000000005-->\n',
       deck_name: 'Biology', folder_path: 'Biology', tags: [],
       // Pretend these lines were generated, so weak spots have notes to show.
-      card_refs: [4, 6, 8, 10, 22].map((line_index, i) => ({ line_index, card_type: ['basic', 'reversible', 'cloze', 'cloze', 'basic'][i], anki_note_id: 1001 + i, content_hash: '', synced: true })),
+      card_refs: [4, 6, 8, 10, 22].map((line_index, i) => ({ line_index, card_type: ['basic', 'reversible', 'cloze', 'cloze', 'basic'][i], anki_note_id: 1001 + i, content_hash: '', synced: true }))
+        .concat([{ line_index: 26, card_type: 'list', anki_note_id: 1010, block_id: 'a0000000-0000-4000-8000-000000000000/list', content_hash: '', synced: true }]),
       created_at: Date.now() / 1000, modified_at: Date.now() / 1000,
     },
     // Dev-only papers for the draft-cards, sources and chat screens.
@@ -403,11 +415,21 @@ function createMockBridge() {
     search_papers: ({ query }) => searchPapersAdvanced(papers, query),
     get_note_stats: ({ note_ids }) => {
       const sample = {
-        1001: { status: 'weak', lapses: 3, reviews: 9, again: 3, ease: 170, last_review: Date.now() / 1000 - 2 * 86400, last_ease: 1, next_due_days: 1, is_new: false, suspended: false },
-        1004: { status: 'leech', lapses: 8, reviews: 14, again: 8, ease: 130, last_review: Date.now() / 1000 - 5 * 86400, last_ease: 1, next_due_days: null, is_new: false, suspended: true },
+        1001: { status: 'weak', lapses: 3, reviews: 9, again: 3, ease: 170, last_review: Date.now() / 1000 - 2 * 86400, last_ease: 1, next_due_days: 1, is_new: false, suspended: false, cards: 1, suspended_cards: 1, flags: [4] },
+        1002: { status: null, lapses: 0, reviews: 5, again: 0, ease: 250, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 4, is_new: false, suspended: false, cards: 2, suspended_cards: 1, flags: [2, 2] },
+        // A list card ("+ " items): the note as a whole, and each item by its anchor.
+        1010: { status: 'leech', lapses: 8, reviews: 40, again: 14, ease: 190, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 1, is_new: false, suspended: true, cards: 5, suspended_cards: 1, flags: [0, 1, 1, 0, 4],
+          items: {
+            'a0000000-0000-4000-8000-000000000001': { status: null, lapses: 0, reviews: 5, again: 0, ease: 230, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 3, is_new: false, suspended: false, cards: 1, suspended_cards: 0, flags: [0] },
+            'a0000000-0000-4000-8000-000000000002': { status: 'weak', lapses: 4, reviews: 9, again: 4, ease: 230, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 3, is_new: false, suspended: false, cards: 1, suspended_cards: 0, flags: [1] },
+            'a0000000-0000-4000-8000-000000000003': { status: 'leech', lapses: 8, reviews: 13, again: 8, ease: 230, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 3, is_new: false, suspended: false, cards: 1, suspended_cards: 0, flags: [1] },
+            'a0000000-0000-4000-8000-000000000004': { status: null, lapses: 1, reviews: 6, again: 1, ease: 230, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 3, is_new: false, suspended: true, cards: 1, suspended_cards: 1, flags: [0] },
+            'a0000000-0000-4000-8000-000000000005': { status: null, lapses: 0, reviews: 5, again: 0, ease: 230, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 3, is_new: false, suspended: false, cards: 1, suspended_cards: 0, flags: [4] },
+          } },
+        1004: { status: 'leech', lapses: 8, reviews: 14, again: 8, ease: 130, last_review: Date.now() / 1000 - 5 * 86400, last_ease: 1, next_due_days: null, is_new: false, suspended: true, cards: 1, suspended_cards: 1, flags: [1] },
       }
       const stats = {}
-      for (const n of note_ids || []) stats[n] = sample[n] || { status: null, lapses: 0, reviews: 4, again: 0, ease: 250, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 6, is_new: false, suspended: false }
+      for (const n of note_ids || []) stats[n] = sample[n] || { status: null, lapses: 0, reviews: 4, again: 0, ease: 250, last_review: Date.now() / 1000 - 86400, last_ease: 3, next_due_days: 6, is_new: false, suspended: false, cards: 1, suspended_cards: 0, flags: [0] }
       return { stats }
     },
     unsuspend_note: () => ({ ok: true, unsuspended: 1 }),
@@ -449,10 +471,17 @@ function createMockBridge() {
     occlusion_edit: ({ name }) => { console.log('Mock: edit occlusions for', name); return { ok: true }; },
     set_web_browser: ({ open }) => ({ open: !!open }),
     get_web_browser: () => ({ open: false }),
+    get_tag_overrides: () => ({ rows: [
+      { shortcut: 'uw', own: '', inherited: 'UWorldABIM' },
+      { shortcut: 'ab', own: 'AMBOSS_Step1', inherited: 'AMBOSS' },
+    ] }),
+    set_tag_overrides: ({ tags }) => (Object.values(tags || {}).some((t) => /^uworldabim$/i.test(t) || /^amboss$/i.test(t))
+      ? { error: 'That tag already belongs to another shortcut.' } : { ok: true }),
     get_settings: () => ({
       default_deck: 'Default', auto_save_interval_seconds: 30, font_size: 14,
-      font_family: 'JetBrains Mono', editor_theme: 'dark', show_card_indicators: true, show_line_numbers: true, color_scheme: 'carolina', weak_spot_markers: true,
-      anki_edit_conflict: 'ask',
+      font_family: 'JetBrains Mono', editor_theme: 'dark', show_card_indicators: true, show_heading_card_counts: true, show_suspended_cards: true, suspended_card_opacity: 85, show_line_numbers: true, color_scheme: 'carolina', weak_spot_markers: true,
+      anki_edit_conflict: 'ask', ai_enabled: true, feynman_enabled: true, feynman_show_scores: true, feynman_provider: 'gemini',
+      tag_shortcuts: [{ shortcut: 'uw', tag: 'UWorldABIM', old: [] }, { shortcut: 'ab', tag: 'AMBOSS', old: [] }],
     }),
     // Mirrors gui/bridge.py: a changed card_style reports it was applied.
     save_settings: ({ settings }) => {
@@ -522,6 +551,7 @@ if (typeof window !== 'undefined') {
     searchPapers, getHomeStats, getNoteStats, unsuspendNote,
     importMarkdown, exportMarkdown, exportPdf, exportPapersToDisk,
     getSettings, saveSettings, openUrl, setWebBrowser, getWebBrowser, sharePaper, shareFolder,
+    getTagOverrides, setTagOverrides,
     getOcclusionCounts, createOcclusion, editOcclusion,
     pickPdfFile, getPdfViewerUrl, getPdfUrl, extractPdfText, extractWebText,
     saveSourceLink, loadSourceLink, openSourceAtLocation,

@@ -10,6 +10,7 @@ import uuid
 from typing import List, Tuple, Optional, Dict, Any
 from .paper import Paper, CardReference
 from .parser import (
+    LIST_BLOCK_SUFFIX,
     ParsedCard,
     extract_cards,
     get_context_heading,
@@ -21,6 +22,8 @@ from .parser import (
     AP_LINK_RE,
     CODE_RE,
 )
+from .qbank import DEFAULT_PREFIX, DEFAULT_SHORTCUT, question_tags, sync_question_tags, unknown_mark_lines
+from .flags import note_card_flags, set_flag, strip_flag_comments
 
 
 ANKIPAPERS_TAG = "AnkiPapers"
@@ -858,7 +861,131 @@ def _paper_derived_field_values(card: ParsedCard, paper: Paper) -> List[str]:
         return [_md_to_html(card.front), _md_to_html(card.back), context, supp]
     if card.card_type == "cloze":
         return [_md_to_html(card.cloze_text), context, supp]
+    if card.card_type == "list":
+        return [_md_to_html(card.list_prompt), list_items_html(card)[0], context, supp]
     return []
+
+
+# ═══ List cards ═══════════════════════════════════════════════════════════
+# A line with "+ " children is one note of type "AnkiPapers List": a cloze
+# note whose Items field holds the list, one cloze per item, so every item is
+# a card with its own schedule. The cloze NUMBER of an item is its identity in
+# Anki (card ord = number - 1), and it must never move to another item, or
+# that item would inherit someone else's review history. So numbers are not
+# positions: each <li> records the item's paper anchor, and a regenerated
+# list keeps every surviving item's number and gives new items unused ones.
+#
+# Fields: Prompt(0), Items(1), Context(2), AnkiPapers_Source(3), Supplement(4)
+
+LIST_NOTE_TYPE = "AnkiPapers List"
+_LIST_LI_RE = re.compile(
+    r'<li data-ap-item="([^"]*)"[^>]*>\{\{c(\d+)::(.*?)\}\}</li>', re.DOTALL
+)
+
+
+def list_item_ordinals(items_field: str) -> List[Tuple[str, int, str]]:
+    """(anchor, cloze number, item html) for each item stored in an Items field."""
+    return [(m.group(1), int(m.group(2)), m.group(3)) for m in _LIST_LI_RE.finditer(items_field or "")]
+
+
+def _cloze_safe(html: str) -> str:
+    """Item text that cannot end its cloze early or start a hint."""
+    return (html or "").replace("}}", "}&#8203;}").replace("::", ":&#8203;:")
+
+
+def list_items_html(card: ParsedCard, items_field: str = "") -> Tuple[str, List[int]]:
+    """The Items field for a list card, and the cloze numbers it uses.
+
+    items_field is what the note holds now (empty for a new note). An item
+    keeps its number when its anchor is found there, or failing that when an
+    item with exactly the same text is (which covers an item whose anchor was
+    never written back, or a paper edited outside the add-on). Anything else
+    gets the next number never used by this note.
+    """
+    stored = list_item_ordinals(items_field)
+    by_anchor = {}
+    for anchor, num, html in stored:
+        if anchor and anchor not in by_anchor:
+            by_anchor[anchor] = num
+    taken = set()
+    numbers: List[Optional[int]] = []
+    for item in card.list_items or []:
+        num = by_anchor.get(item.block_id) if item.block_id else None
+        if num in taken:
+            num = None
+        numbers.append(num)
+        if num is not None:
+            taken.add(num)
+    for i, item in enumerate(card.list_items or []):
+        if numbers[i] is not None:
+            continue
+        html = _md_to_html(item.text)
+        for anchor, num, stored_html in stored:
+            if num not in taken and _normalize_field_value(stored_html) == _normalize_field_value(html):
+                numbers[i] = num
+                taken.add(num)
+                break
+    next_num = max([n for _a, n, _h in stored] + [0]) + 1
+    for i in range(len(numbers)):
+        if numbers[i] is None:
+            while next_num in taken:
+                next_num += 1
+            numbers[i] = next_num
+            taken.add(next_num)
+    lis = []
+    for item, num in zip(card.list_items or [], numbers):
+        body = _cloze_safe(_md_to_html(item.text))
+        lis.append(f'<li data-ap-item="{item.block_id or ""}">{{{{c{num}::{body}}}}}</li>')
+    return f'<ol class="ap-list">{"".join(lis)}</ol>', [int(n) for n in numbers]
+
+
+def _set_list_fields(note, card: ParsedCard, paper: Paper) -> List[int]:
+    """Write a list card into its note's fields. Returns the cloze numbers used."""
+    items, numbers = list_items_html(card, note.fields[1] if len(note.fields) > 1 else "")
+    note.fields[0] = _md_to_html(card.list_prompt)
+    note.fields[1] = items
+    note.fields[2] = _card_context(card, paper)
+    note.fields[3] = _source_ref(card, paper)
+    if len(note.fields) > 4:
+        note.fields[4] = _md_to_html(getattr(card, "supplement", ""))
+    return numbers
+
+
+def _remove_dropped_list_cards(col, note_id: int, numbers: List[int]) -> None:
+    """Delete the cards of items no longer in the list.
+
+    Anki never deletes a cloze card whose number has gone from the note; it
+    leaves it as an "empty card" until Tools > Empty Cards. For a list that
+    would keep a deleted item due for review, so its card goes now.
+    """
+    wanted = {n - 1 for n in numbers}
+    try:
+        stale = [cid for cid in col.find_cards(f"nid:{note_id}") if col.get_card(cid).ord not in wanted]
+        if stale:
+            col.remove_cards_and_orphaned_notes(stale)
+    except Exception as e:
+        print(f"[Anki Papers] Error removing dropped list items: {e}")
+
+
+def _assign_list_item_anchors(card: ParsedCard, pending_anchors: List[Tuple[int, str]]) -> None:
+    """Give every item of a list card an anchor before its note is written.
+
+    The anchor is the item's identity (see list_items_html), so it has to
+    exist when the note is first written, not only after the paper is saved.
+    Two items carrying the same anchor (a copied line) cannot both keep it;
+    the second gets a new one, which is written to its line only if the line
+    has none.
+    """
+    seen = set()
+    for item in card.list_items or []:
+        if item.block_id and item.block_id not in seen:
+            seen.add(item.block_id)
+            continue
+        had_anchor = bool(item.block_id)
+        item.block_id = str(uuid.uuid4())
+        seen.add(item.block_id)
+        if not had_anchor:
+            pending_anchors.append((item.line_index, item.block_id))
 
 
 def derived_hash_for(card: ParsedCard, paper: Paper) -> str:
@@ -895,6 +1022,14 @@ def _note_field_diff(note, card: ParsedCard, paper: Paper) -> set:
         act_body = [note.fields[0]]
         act_context = note.fields[1] if len(note.fields) > 1 else ""
         act_supp = note.fields[3] if len(note.fields) > 3 else ""
+    elif card.card_type == "list":
+        # Prompt(0), Items(1), Context(2), Source(3), Supplement(4). The items
+        # are numbered from the note itself, so an unchanged list compares
+        # equal however its numbers were first handed out.
+        act_body = [note.fields[0], note.fields[1] if len(note.fields) > 1 else ""]
+        exp_body = [_md_to_html(card.list_prompt), list_items_html(card, act_body[1])[0]]
+        act_context = note.fields[2] if len(note.fields) > 2 else ""
+        act_supp = note.fields[4] if len(note.fields) > 4 else ""
     else:
         return set()
 
@@ -941,6 +1076,7 @@ _NOTE_TYPE_FOR_CARD = {
     "basic": "AnkiPapers Basic",
     "reversible": "AnkiPapers Reversible",
     "cloze": "AnkiPapers Cloze",
+    "list": LIST_NOTE_TYPE,
 }
 
 
@@ -986,7 +1122,10 @@ def current_line_for_note(paper: Paper, note_id: Optional[int]) -> Optional[int]
     if ref is None:
         return None
     if ref.block_id:
-        marker = f"<!--ap:{ref.block_id}-->".lower()
+        anchor = ref.block_id
+        if anchor.endswith(LIST_BLOCK_SUFFIX):  # a list card lives on its parent's line
+            anchor = anchor[: -len(LIST_BLOCK_SUFFIX)]
+        marker = f"<!--ap:{anchor}-->".lower()
         for i, line in enumerate((paper.content or "").split("\n")):
             if marker in line.lower():
                 return i
@@ -1121,6 +1260,98 @@ def ensure_note_types(col, card_style: str = "basic", color_scheme: str = "carol
     _ensure_basic_type(col, css)
     _ensure_reversible_type(col, css)
     _ensure_cloze_type(col, css)
+    _ensure_list_type(col, css)
+
+
+# How a list card looks. The item being asked is the one holding Anki's
+# active ".cloze"; the items after it are hidden by CSS alone (":has" plus the
+# sibling combinator), so the card reads the same on AnkiMobile, AnkiDroid and
+# AnkiWeb, where no add-on runs. The reviewer adds .ap-chip ratings on desktop
+# (gui/list_review.py) when it walks a list item by item.
+_LIST_CSS = """
+/* ─── List cards ("+ " items) ───────────────────── */
+.ap-list-prompt { font-weight: 600; margin-bottom: 14px; }
+ol.ap-list { list-style: none; padding: 0; margin: 0; counter-reset: ap-item; }
+ol.ap-list > li {
+  counter-increment: ap-item;
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 7px 12px; margin: 4px 0;
+  border: 1px solid transparent; border-radius: 8px;
+}
+ol.ap-list > li::before {
+  content: counter(ap-item);
+  min-width: 1.1em; font-size: 0.75em; color: #8a8a8a;
+}
+ol.ap-list > li:has(.cloze) {
+  border-color: #4b9cd3; background: rgba(75, 156, 211, 0.08);
+}
+ol.ap-list > li:has(.cloze) ~ li > .cloze-inactive { display: none; }
+ol.ap-list > li:has(.cloze) ~ li::after {
+  content: "\\00b7  \\00b7  \\00b7"; color: #9a9a9a; letter-spacing: 2px;
+}
+ol.ap-list .ap-chip {
+  margin-left: auto; align-self: center;
+  font-size: 12px; font-weight: 500; padding: 1px 9px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06); color: #555;
+}
+ol.ap-list .ap-chip-1 { background: rgba(214, 69, 65, 0.12); color: #b3261e; }
+ol.ap-list .ap-chip-2 { background: rgba(226, 150, 30, 0.15); color: #9a5b00; }
+ol.ap-list .ap-chip-3 { background: rgba(46, 160, 67, 0.13); color: #1a7f37; }
+ol.ap-list .ap-chip-4 { background: rgba(75, 156, 211, 0.15); color: #19468d; }
+.nightMode ol.ap-list > li::before { color: #9a9a9a; }
+.nightMode ol.ap-list > li:has(.cloze) { border-color: #7fb8e0; background: rgba(75, 156, 211, 0.16); }
+.nightMode ol.ap-list .ap-chip { background: rgba(255, 255, 255, 0.08); color: #c9c9c9; }
+.nightMode ol.ap-list .ap-chip-1 { background: rgba(214, 69, 65, 0.22); color: #ff9b94; }
+.nightMode ol.ap-list .ap-chip-2 { background: rgba(226, 150, 30, 0.22); color: #f5c26b; }
+.nightMode ol.ap-list .ap-chip-3 { background: rgba(46, 160, 67, 0.22); color: #7ee2a0; }
+.nightMode ol.ap-list .ap-chip-4 { background: rgba(75, 156, 211, 0.25); color: #a9d3f0; }
+"""
+
+_JUMP_BUTTON = '''  <div class="ap-footer">
+    <button class="ap-jump" onclick="pycmd('ankipapers_jump:'+'{{AnkiPapers_Source}}'); event.stopPropagation();">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Papers
+    </button>
+  </div>'''
+
+_LIST_QFMT = '''<div class="ankipapers-card ap-list-card">
+  {{#Context}}<div class="ap-meta">{{Context}}</div>{{/Context}}
+  <div class="ap-question ap-list-prompt">{{Prompt}}</div>
+  <div class="ap-cloze">{{cloze:Items}}</div>
+''' + _JUMP_BUTTON + '''
+</div>'''
+
+_LIST_AFMT = '''<div class="ankipapers-card ap-list-card">
+  {{#Context}}<div class="ap-meta">{{Context}}</div>{{/Context}}
+  <div class="ap-question ap-list-prompt">{{Prompt}}</div>
+  <div class="ap-cloze">{{cloze:Items}}</div>
+  {{#Supplement}}<div class="ap-supplement">{{Supplement}}</div>{{/Supplement}}
+''' + _JUMP_BUTTON + '''
+</div>'''
+
+
+def _ensure_list_type(col, css: str = _ANKIPAPERS_CSS):
+    """Create or refresh the AnkiPapers List note type (see list_items_html)."""
+    model = col.models.by_name(LIST_NOTE_TYPE)
+    if model is None:
+        model = col.models.new(LIST_NOTE_TYPE)
+        model["type"] = 1  # cloze: one card per item number
+        for name in ("Prompt", "Items", "Context", ANKIPAPERS_FIELD, "Supplement"):
+            col.models.add_field(model, col.models.new_field(name))
+        tmpl = col.models.new_template("List item")
+        tmpl["qfmt"] = _LIST_QFMT
+        tmpl["afmt"] = _LIST_AFMT
+        col.models.add_template(model, tmpl)
+        model["css"] = css + _LIST_CSS
+        col.models.add(model)
+        return
+    tmpl = model["tmpls"][0]
+    if (model.get("css") != css + _LIST_CSS or tmpl.get("qfmt") != _LIST_QFMT
+            or tmpl.get("afmt") != _LIST_AFMT):
+        model["css"] = css + _LIST_CSS
+        tmpl["qfmt"] = _LIST_QFMT
+        tmpl["afmt"] = _LIST_AFMT
+        col.models.save(model)
 
 
 def _ensure_basic_type(col, css: str = _ANKIPAPERS_CSS):
@@ -1495,7 +1726,10 @@ def _update_note_from_card(col, note, card: ParsedCard, paper: Paper, deck_id: i
             note.fields[2] = source_ref
             if len(note.fields) > 3:
                 note.fields[3] = supp
-                
+
+        elif card.card_type == "list":
+            list_numbers = _set_list_fields(note, card, paper)
+
         else:
             return False
           
@@ -1517,6 +1751,8 @@ def _update_note_from_card(col, note, card: ParsedCard, paper: Paper, deck_id: i
             col.update_note(note)
         else:
             note.flush()
+        if card.card_type == "list":
+            _remove_dropped_list_cards(col, note.id, list_numbers)
         return True
     except Exception as e:
         print(f"[Anki Papers] Error updating note: {e}")
@@ -1529,9 +1765,22 @@ def generate_cards(
     anki_edit_conflict: str = "preserve",
     card_style: str = "basic",
     color_scheme: str = "carolina",
+    tag_table: Optional[Dict[str, str]] = None,
+    tag_heads: Optional[List[str]] = None,
+    report: Optional[Dict[str, Any]] = None,
 ) -> Tuple[int, int, int]:
     """
     Generate/update Anki cards from a paper.
+
+    tag_table: the Tag Shortcuts in force for this paper, shortcut -> tag
+        ({"uw": "UWorldABIM"} turns uw::3252 into UWorldABIM::3252), and
+    tag_heads: every tag name whose question tags Generate keeps in step
+        (the table's, and earlier names after a rename); see core/qbank.py.
+    report: when given, filled with "flags_changed" (notes whose flag was
+        set or cleared), "unflagged_headings" (lines whose flag comment came
+        off because every card they flag was cleared in Anki; the key keeps its
+        old name) and "unknown_tag_lines" (lines with a uw::-style mark whose
+        shortcut isn't in the table, so it tagged nothing).
 
     anki_edit_conflict:
         preserve — if the paper line is unchanged but Anki was edited, leave Anki as-is.
@@ -1566,6 +1815,43 @@ def generate_cards(
         if ref.content_hash:
             existing_by_hash[ref.content_hash] = ref
 
+    report = report if report is not None else {}
+    report.setdefault("flags_changed", 0)
+    report.setdefault("unflagged_headings", [])
+
+    # Question tags (core/qbank.py): uw::3252 is looked up in the Tag
+    # Shortcuts; a shortcut that isn't there tags nothing, and its lines are
+    # named in the report.
+    if tag_table is None:
+        tag_table = {DEFAULT_SHORTCUT: DEFAULT_PREFIX}
+    if tag_heads is None:
+        tag_heads = list(tag_table.values())
+    report["unknown_tag_lines"] = [_line_label(line) for _i, line in unknown_mark_lines(paper.content, tag_table)]
+
+    # Flags cleared in Anki on every card under a heading take the heading's
+    # <!--flag:...--> off too, before anything else reads the paper (see
+    # core/flags.py). Clearing them was done in Anki, not in the paper, so
+    # it must not hand those cards a flag either: one from a heading further
+    # up is recorded as already applied, and only a later change to the
+    # paper flags them again.
+    cleared = _headings_cleared_in_anki(col, cards, refs_by_block_id)
+    if cleared:
+        lines = paper.content.split("\n")
+        for line_index in cleared:
+            report["unflagged_headings"].append(_line_label(lines[line_index]))
+            lines[line_index] = strip_flag_comments(lines[line_index])
+        paper.content = "\n".join(lines)
+        cards = extract_cards(paper.content)
+        now_wanted = {c.block_id: c.flag for c in cards if c.block_id}
+        now_items = {(c.block_id, it.block_id): it.flag for c in cards
+                     if c.card_type == "list" and c.block_id for it in c.list_items if it.block_id}
+        for keys in cleared.values():
+            for key in keys:
+                if isinstance(key, tuple):  # (list block id, item anchor)
+                    refs_by_block_id[key[0]].item_flags_applied[key[1]] = now_items.get(key, 0)
+                else:
+                    refs_by_block_id[key].flag_applied = now_wanted.get(key, 0)
+
     new_card_refs: List[CardReference] = []
 
     # (line_index, block_id) pairs for card lines that carry no <!--ap:uuid-->
@@ -1596,7 +1882,43 @@ def generate_cards(
     title_tag = paper_title_tag(paper)
     old_title_tag = getattr(paper, "title_tag", None)
 
+    # Anchors queued for a line in this pass. A line that is a card and also
+    # has "+ " items is two cards on one line; the second must reuse the
+    # anchor queued for the first, or the line would get two.
+    line_anchor: Dict[int, str] = {}
+
+    def claim_bid(card: ParsedCard, preferred: Optional[str]) -> str:
+        """The block id this card's reference will carry, queuing its anchor."""
+        if card.card_type != "list":
+            bid = card.block_id or preferred
+            if not bid or bid in used_block_ids:
+                bid = str(uuid.uuid4())
+            if not card.block_id:
+                pending_anchors.append((card.line_index, bid))
+                line_anchor[card.line_index] = bid
+            used_block_ids.add(bid)
+            return bid
+        # A list's block id is its parent line's anchor plus LIST_BLOCK_SUFFIX.
+        if card.block_id:
+            bid = card.block_id
+            if bid in used_block_ids:
+                bid = str(uuid.uuid4()) + LIST_BLOCK_SUFFIX
+        else:
+            anchor = line_anchor.get(card.line_index)
+            if anchor is None:
+                if preferred and preferred.endswith(LIST_BLOCK_SUFFIX):
+                    anchor = preferred[: -len(LIST_BLOCK_SUFFIX)]
+                if not anchor or (anchor + LIST_BLOCK_SUFFIX) in used_block_ids:
+                    anchor = str(uuid.uuid4())
+                pending_anchors.append((card.line_index, anchor))
+                line_anchor[card.line_index] = anchor
+            bid = anchor + LIST_BLOCK_SUFFIX
+        used_block_ids.add(bid)
+        return bid
+
     for card in cards:
+        if card.card_type == "list":
+            _assign_list_item_anchors(card, pending_anchors)
         existing_ref = _resolve_existing_ref_for_card(
             card, refs_by_block_id, existing_by_hash, claimed_note_ids
         )
@@ -1613,6 +1935,14 @@ def generate_cards(
             if note is not None and not _note_fits_card(note, card):
                 note = None
             if note is not None:
+                # Question tags follow the headings above the card, which the
+                # card's own hashes know nothing about: adding an id to a
+                # heading changes no card's text or context. So they are
+                # brought in line on every pass, and saved below on their own
+                # if nothing else rewrites the note.
+                note.tags, qbank_changed = sync_question_tags(
+                    list(note.tags), question_tags(card.tag_marks or [], tag_table), tag_heads)
+                saved = False
                 bid = card.block_id or existing_ref.block_id
                 derived = derived_hash_for(card, paper)
                 # Whether this note actually got rewritten on this pass. Only
@@ -1625,7 +1955,7 @@ def generate_cards(
                 if existing_ref.content_hash != card.content_hash:
                     if _update_note_from_card(col, note, card, paper, deck_id):
                         updated += 1
-                        written = True
+                        written = saved = True
                 else:
                     diff = _note_field_diff(note, card, paper)
                     # A paper-side change (the supplement or the heading above
@@ -1651,19 +1981,29 @@ def generate_cards(
                     ):
                         if _update_note_from_card(col, note, card, paper, deck_id):
                             updated += 1
-                            written = True
+                            written = saved = True
                     elif not diff and not derived_moved:
                         # Nothing to write because nothing differs — the note
                         # already matches the paper, so the current hash is
                         # genuinely what it holds.
                         written = True
                 # Not counted as "updated": the card itself is unchanged.
+                # A write here also saves the question tags set above.
+                refreshed = False
                 try:
-                    _refresh_bookkeeping(col, note, card, paper, title_tag, old_title_tag)
+                    refreshed = _refresh_bookkeeping(col, note, card, paper, title_tag, old_title_tag)
                 except Exception as e:
                     print(f"[Anki Papers] Error refreshing note bookkeeping: {e}")
-                if not bid or bid in used_block_ids:
-                    bid = str(uuid.uuid4())
+                if qbank_changed and not saved and not refreshed and _save_note(col, note):
+                    updated += 1
+                if card.card_type == "list":
+                    flag_applied = 0
+                    item_flags = _sync_list_flags(
+                        col, note.id, card, getattr(existing_ref, "item_flags_applied", None) or {}, report)
+                else:
+                    flag_applied = _sync_flag(col, note.id, card.flag,
+                                              getattr(existing_ref, "flag_applied", 0) or 0, report)
+                    item_flags = None
                 # Backfill. This card already exists in Anki and keeps its
                 # note — it is only being given a permanent name. When the
                 # stored reference already carried a block id (every paper
@@ -1671,9 +2011,7 @@ def generate_cards(
                 # written into the document, so the anchor and the sidecar
                 # agree and nothing is recreated. The hash is computed with
                 # the anchor stripped, so this does not count as an edit.
-                if not card.block_id:
-                    pending_anchors.append((card.line_index, bid))
-                used_block_ids.add(bid)
+                bid = claim_bid(card, existing_ref.block_id)
                 claimed_note_ids.add(existing_ref.anki_note_id)
                 new_card_refs.append(
                     CardReference(
@@ -1687,20 +2025,17 @@ def generate_cards(
                             derived if written
                             else (getattr(existing_ref, "derived_hash", None) or derived)
                         ),
+                        flag_applied=flag_applied,
+                        item_flags_applied=item_flags,
                     )
                 )
                 reused = True
         if reused:
             continue
 
-        note_id = _create_note(col, card, paper, deck_id)
+        note_id = _create_note(col, card, paper, deck_id, tag_table)
         if note_id:
-            bid = card.block_id or str(uuid.uuid4())
-            if bid in used_block_ids:
-                bid = str(uuid.uuid4())
-            if not card.block_id:
-                pending_anchors.append((card.line_index, bid))
-            used_block_ids.add(bid)
+            bid = claim_bid(card, None)
             claimed_note_ids.add(note_id)
             new_card_refs.append(
                 CardReference(
@@ -1711,6 +2046,9 @@ def generate_cards(
                     synced=True,
                     block_id=bid,
                     derived_hash=derived_hash_for(card, paper),
+                    flag_applied=0 if card.card_type == "list" else _sync_flag(col, note_id, card.flag, 0, report),
+                    item_flags_applied=(_sync_list_flags(col, note_id, card, {}, report)
+                                        if card.card_type == "list" else None),
                 )
             )
             created += 1
@@ -1736,7 +2074,138 @@ def generate_cards(
     return created, updated, deleted
 
 
-def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int) -> Optional[int]:
+def _sync_flag(col, note_id: int, wanted: int, last: int, report: Dict[str, Any]) -> int:
+    """Bring a note's cards to the heading's flag when the paper changed it.
+
+    `last` is the flag Generate set on them before. Equal to `wanted`: the
+    paper did not change, so Anki is left as it is (a flag cleared there stays
+    cleared). A new flag goes on every card. A flag taken off the heading
+    comes off only the cards still showing the one Generate set. Returns the
+    flag to remember as applied.
+    """
+    if wanted == last:
+        return last
+    card_flags = note_card_flags(col, note_id)
+    if wanted:
+        ids = list(card_flags)
+    else:
+        ids = [cid for cid, f in card_flags.items() if f == last]
+    if ids and set_flag(col, ids, wanted):
+        report["flags_changed"] += 1
+    return wanted
+
+
+def _list_item_cards(col, note_id: int) -> Dict[str, int]:
+    """{item anchor: card id} for a list note."""
+    note = col.get_note(note_id)
+    by_ord = {c.ord: c.id for c in note.cards()}
+    return {a: by_ord[n - 1] for a, n, _h in list_item_ordinals(note.fields[1]) if a and (n - 1) in by_ord}
+
+
+def _sync_list_flags(col, note_id: int, card: ParsedCard, applied: Dict[str, int],
+                     report: Dict[str, Any]) -> Dict[str, int]:
+    """_sync_flag for a list, item by item: each item's card gets the item's
+    flag (its own, or the list's), under the same rule: only a flag the paper
+    changed since the last Generate is pushed, and one taken off comes off
+    only a card still showing the flag Generate set. Returns what to remember
+    as applied, by item anchor."""
+    try:
+        item_cards = _list_item_cards(col, note_id)
+    except Exception as e:
+        print(f"[Anki Papers] Error reading list items: {e}")
+        return dict(applied)
+    out: Dict[str, int] = {}
+    changed = False
+    for item in card.list_items or []:
+        cid = item_cards.get(item.block_id) if item.block_id else None
+        if cid is None:
+            continue
+        wanted, last = item.flag, applied.get(item.block_id, 0)
+        if wanted != last:
+            current = note_card_flags(col, note_id).get(cid, 0)
+            if (wanted or current == last) and set_flag(col, [cid], wanted):
+                changed = True
+        out[item.block_id] = wanted
+    if changed:
+        report["flags_changed"] += 1
+    return out
+
+
+def _headings_cleared_in_anki(col, cards: List[ParsedCard],
+                              refs_by_block_id: Dict[str, CardReference]) -> Dict[int, list]:
+    """Flagged lines whose flag was cleared in Anki on every card they flag.
+
+    {flagged line: what it flags}, each entry a card's block id, or for a
+    list item (list block id, item anchor). The line is a heading, a card's
+    own line, a list item's line, or any line with cards under it. It
+    qualifies only when Generate had already set its flag on all of its cards
+    (so a heading flagged since the last Generate is never mistaken for a
+    cleared one) and none of them still shows that flag.
+    """
+    groups: Dict[int, list] = {}
+    for card in cards:
+        ref = refs_by_block_id.get(card.block_id) if card.block_id else None
+        if card.card_type == "list":
+            for item in card.list_items or []:
+                if item.flag and item.flag_line is not None:
+                    groups.setdefault(item.flag_line, []).append((card, item, ref))
+        elif card.flag and card.flag_line is not None:
+            groups.setdefault(card.flag_line, []).append((card, None, ref))
+    cleared: Dict[int, list] = {}
+    item_cards_cache: Dict[int, Dict[str, int]] = {}
+    for line_index, group in groups.items():
+        def applied(card, item, ref):
+            if not (ref and ref.anki_note_id):
+                return False
+            if item is None:
+                return ref.flag_applied == card.flag
+            return bool(item.block_id) and ref.item_flags_applied.get(item.block_id) == item.flag
+        if not all(applied(*g) for g in group):
+            continue
+        flag = group[0][1].flag if group[0][1] is not None else group[0][0].flag
+        still = False
+        for card, item, ref in group:
+            flags = note_card_flags(col, ref.anki_note_id)
+            if item is None:
+                still = flag in flags.values()
+            else:
+                if ref.anki_note_id not in item_cards_cache:
+                    try:
+                        item_cards_cache[ref.anki_note_id] = _list_item_cards(col, ref.anki_note_id)
+                    except Exception:
+                        item_cards_cache[ref.anki_note_id] = {}
+                cid = item_cards_cache[ref.anki_note_id].get(item.block_id)
+                still = cid is None or flags.get(cid) == flag
+            if still:
+                break
+        if still:
+            continue
+        cleared[line_index] = [card.block_id if item is None else (card.block_id, item.block_id)
+                               for card, item, _ref in group]
+    return cleared
+
+
+def _line_label(line: str) -> str:
+    """A heading or card line as plain words, for the note shown after Generate."""
+    text = re.sub(r"<!--.*?-->", "", re.sub(r"^\s*(?:#{1,6}|[-*])\s+", "", line.strip())).strip()
+    return text if len(text) <= 60 else text[:57].rstrip() + "..."
+
+
+def _save_note(col, note) -> bool:
+    """Write a note that was changed in place (its tags, say) back to Anki."""
+    try:
+        if hasattr(col, "update_note"):
+            col.update_note(note)
+        else:
+            note.flush()
+        return True
+    except Exception as e:
+        print(f"[Anki Papers] Error saving note: {e}")
+        return False
+
+
+def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int,
+                 tag_table: Optional[Dict[str, str]] = None) -> Optional[int]:
     """Create a single Anki note from a ParsedCard."""
     try:
         context = _card_context(card, paper)
@@ -1754,6 +2223,9 @@ def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int) -> Optional[
         if hasattr(card, 'inline_tags') and card.inline_tags:
             for itag in card.inline_tags:
                 tags.append(f"AnkiPapers::{itag}")
+
+        # Question tags from its own line and the lines above it (core/qbank.py)
+        tags.extend(question_tags(card.tag_marks or [], tag_table or {DEFAULT_SHORTCUT: DEFAULT_PREFIX}))
 
         if card.card_type == "basic":
             model = col.models.by_name("AnkiPapers Basic")
@@ -1789,6 +2261,13 @@ def _create_note(col, card: ParsedCard, paper: Paper, deck_id: int) -> Optional[
             note.fields[2] = source_ref
             if len(note.fields) > 3:
                 note.fields[3] = supp
+
+        elif card.card_type == "list":
+            model = col.models.by_name(LIST_NOTE_TYPE)
+            if not model:
+                return None
+            note = col.new_note(model)
+            _set_list_fields(note, card, paper)
 
         else:
             return None
@@ -1828,15 +2307,16 @@ def classify_note(lapses: int, tags: str, suspended: bool) -> Optional[str]:
 
 def note_review_stats(col, note_ids: List[int]) -> Dict[str, Dict[str, Any]]:
     """Per note: worst lapses, Again presses / reviews, ease, last review,
-    next due, suspended and status ('weak' / 'leech' / None). Keyed by the
-    note id as a string (JSON object keys)."""
+    next due, suspended and status ('weak' / 'leech' / None), plus how many
+    cards it has, how many are suspended, and each card's flag (0 = none).
+    Keyed by the note id as a string (JSON object keys)."""
     nids = sorted({int(n) for n in note_ids if n})
     if not nids:
         return {}
     nid_list = ",".join(str(n) for n in nids)
     today = col.sched.today
     cards = col.db.all(
-        f"select id, nid, lapses, factor, queue, type, due from cards where nid in ({nid_list})"
+        f"select id, nid, lapses, factor, queue, type, due, flags from cards where nid in ({nid_list})"
     )
     by_note: Dict[int, List[tuple]] = {}
     for row in cards:
@@ -1858,46 +2338,80 @@ def note_review_stats(col, note_ids: List[int]) -> Dict[str, Dict[str, Any]]:
                 n, again, last_id, _ = reviews[cid]
                 reviews[cid] = (n, again, last_id, ease)
     tags_by_note = dict(col.db.all(f"select id, tags from notes where id in ({nid_list})"))
+    list_mid = None
+    try:
+        lm = col.models.by_name(LIST_NOTE_TYPE)
+        list_mid = int(lm["id"]) if lm else None
+    except Exception:
+        pass
+    items_by_note = {}
+    ords: Dict[int, int] = {}
+    if list_mid is not None:
+        for nid, flds in col.db.all(f"select id, flds from notes where id in ({nid_list}) and mid = {list_mid}"):
+            # Items is the second field (fields are joined by \x1f).
+            parts = (flds or "").split("\x1f")
+            items_by_note[nid] = list_item_ordinals(parts[1] if len(parts) > 1 else "")
+        if items_by_note:
+            in_list = ",".join(str(n) for n in items_by_note)
+            ords = dict(col.db.all(f"select id, ord from cards where nid in ({in_list})"))
 
     out: Dict[str, Dict[str, Any]] = {}
     for nid in nids:
         rows = by_note.get(nid)
         if not rows:
             continue
-        lapses = max(r[2] for r in rows)
-        suspended = any(r[4] == -1 for r in rows)
-        n_reviews = sum(reviews.get(r[0], (0, 0, 0, 0))[0] for r in rows)
-        n_again = sum(reviews.get(r[0], (0, 0, 0, 0))[1] for r in rows)
-        factors = [r[3] for r in rows if r[3]]
-        last = max((reviews[r[0]] for r in rows if r[0] in reviews), key=lambda v: v[2], default=None)
-        # Next due across cards still in rotation: review cards count days
-        # from today, learning cards are due within the day, new cards wait.
-        next_due: Optional[int] = None
-        is_new = False
-        for _cid, _nid, _lapses, _factor, queue, _ctype, due in rows:
-            if queue == 2 or queue == 3:
-                days = int(due) - today
-            elif queue == 1:
-                days = 0
-            elif queue == 0:
-                is_new = True
-                continue
-            else:
-                continue
-            next_due = days if next_due is None else min(next_due, days)
-        out[str(nid)] = {
-            "status": classify_note(lapses, tags_by_note.get(nid, ""), suspended),
-            "lapses": lapses,
-            "reviews": n_reviews,
-            "again": n_again,
-            "ease": round(min(factors) / 10) if factors else None,  # percent; None under FSRS-only
-            "last_review": (last[2] // 1000) if last else None,      # epoch seconds
-            "last_ease": last[3] if last else None,                  # 1 Again … 4 Easy
-            "next_due_days": next_due,
-            "is_new": is_new and next_due is None,
-            "suspended": suspended,
-        }
+        tags = tags_by_note.get(nid, "")
+        out[str(nid)] = _card_rows_stats(rows, reviews, tags, today)
+        # A list note's cards are its items, each on a line of its own, so
+        # each item's numbers are given by the item's anchor as well.
+        if nid in items_by_note:
+            by_ord = {ords[r[0]]: r for r in rows if r[0] in ords}
+            out[str(nid)]["items"] = {
+                anchor: _card_rows_stats([by_ord[num - 1]], reviews, tags, today)
+                for anchor, num, _html in items_by_note[nid]
+                if anchor and (num - 1) in by_ord
+            }
     return out
+
+
+def _card_rows_stats(rows, reviews, tags: str, today: int) -> Dict[str, Any]:
+    """The review summary note_review_stats gives for a set of card rows."""
+    lapses = max(r[2] for r in rows)
+    suspended = any(r[4] == -1 for r in rows)
+    n_reviews = sum(reviews.get(r[0], (0, 0, 0, 0))[0] for r in rows)
+    n_again = sum(reviews.get(r[0], (0, 0, 0, 0))[1] for r in rows)
+    factors = [r[3] for r in rows if r[3]]
+    last = max((reviews[r[0]] for r in rows if r[0] in reviews), key=lambda v: v[2], default=None)
+    # Next due across cards still in rotation: review cards count days
+    # from today, learning cards are due within the day, new cards wait.
+    next_due: Optional[int] = None
+    is_new = False
+    for _cid, _nid, _lapses, _factor, queue, _ctype, due, _flags in rows:
+        if queue == 2 or queue == 3:
+            days = int(due) - today
+        elif queue == 1:
+            days = 0
+        elif queue == 0:
+            is_new = True
+            continue
+        else:
+            continue
+        next_due = days if next_due is None else min(next_due, days)
+    return {
+        "status": classify_note(lapses, tags, suspended),
+        "lapses": lapses,
+        "reviews": n_reviews,
+        "again": n_again,
+        "ease": round(min(factors) / 10) if factors else None,  # percent; None under FSRS-only
+        "last_review": (last[2] // 1000) if last else None,      # epoch seconds
+        "last_ease": last[3] if last else None,                  # 1 Again … 4 Easy
+        "next_due_days": next_due,
+        "is_new": is_new and next_due is None,
+        "suspended": suspended,
+        "cards": len(rows),
+        "suspended_cards": sum(1 for r in rows if r[4] == -1),
+        "flags": [(r[7] or 0) & 0b111 for r in rows],
+    }
 
 
 def unsuspend_note(col, note_id: int) -> int:

@@ -9,7 +9,7 @@ import { CopyPlus, AlertTriangle, CheckCircle2 } from 'lucide-react'
  *   { phase: 'confirm',  folder, papers, includesSubfolders }
  *   { phase: 'checking', folder, index, total }           // conflict check
  *   { phase: 'running',  folder, index, total, title }    // generating
- *   { phase: 'done',     folder, total, created, updated, deleted, failures }
+ *   { phase: 'done',     folder, total, created, updated, deleted, flagsChanged, unflagged, unknownTags, failures }
  *
  * While checking or running there are no buttons and clicking outside does
  * nothing: the window must stay open until every paper is written.
@@ -77,6 +77,9 @@ export default function FolderGenerateDialog({ state, onConfirm, onClose }) {
             </div>
             <p className="folder-gen-text">
               Done: {state.created} created, {state.updated} updated, {state.deleted} removed
+              {state.flagsChanged ? `, ${state.flagsChanged} flagged or unflagged` : ''}
+              {state.unflagged ? `, flag removed from ${state.unflagged} ${state.unflagged === 1 ? 'line' : 'lines'} (cleared in Anki)` : ''}
+              {state.unknownTags ? `, ${state.unknownTags} ${state.unknownTags === 1 ? 'line uses a tag shortcut' : 'lines use tag shortcuts'} not in Settings (not tagged)` : ''}
               {' '}across {plural(state.total - state.failures.length, 'paper')}.
             </p>
             {state.failures.length > 0 && (

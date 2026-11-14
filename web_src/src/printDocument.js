@@ -23,6 +23,8 @@ import {
   tableSizeOf, stripTableSize, TABLE_SIZE_DEFAULT, BASIC_CARD_RE,
 } from './blockFormat'
 import { stripApBlockId } from './docLinks'
+import { stripTagMarks } from './qbankTags'
+import { stripFlagComments } from './cardFlags'
 import { findCodeBlocks, blockCodeText, highlightLines } from './codeBlocks'
 
 /** Width of one indent level in the printed document, in px. */
@@ -45,7 +47,7 @@ function indentLevelOf(line) {
 
 /** Everything the printed page should not show, removed before formatting. */
 function printableBody(line) {
-  return stripInlineTags(stripApBlockId(String(line ?? '')).trim())
+  return stripInlineTags(stripFlagComments(stripTagMarks(stripApBlockId(String(line ?? '')))).trim())
 }
 
 const esc = (s) => String(s ?? '')
@@ -118,6 +120,11 @@ function renderLine(line, fmt, mediaDir) {
   if (type === 'bullet') {
     const m = body.match(/^\s*[-*]\s+(.+)$/)
     if (m) return row(`<div class="li"><span class="marker">•</span><span>${fmt(m[1])}</span></div>`)
+  }
+
+  if (type === 'list-item') {
+    const m = body.match(/^\+\s+(.+)$/)
+    if (m) return row(`<div class="li"><span class="marker">+</span><span>${fmt(m[1])}</span></div>`)
   }
 
   if (type === 'numbered') {

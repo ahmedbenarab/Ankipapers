@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 from aqt import mw
 
 from ..core import ai as AI
+from ..core import feynman as FEYN
 from ..core import sources as SRC
 from ..core.paper import Paper
 from ..core.storage import (
@@ -154,6 +155,7 @@ class AISourcesMixin:
                 "provider": s["provider"], "model": s["model"], "base_url": s["base_url"],
                 "keys": keys, "key_store": KEYS.where(), "usage": USAGE.this_month(),
                 "default_rules": AI.DEFAULT_CARD_RULES,
+                "feynman_default_rules": FEYN.DEFAULT_GRADING_RULES,
                 "ready": bool(s["model"]) and (keys[s["provider"]]["saved"] or s["provider"] == "openai"),
             }
         except Exception as e:

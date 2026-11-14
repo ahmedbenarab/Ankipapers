@@ -48,6 +48,15 @@ export const aiTest = (provider, { key = '', baseUrl = '' } = {}) =>
 export const aiDraft = (payload, opts) => runJob('ai_draft', payload, opts)
 export const aiChat = (payload, opts) => runJob('ai_chat', payload, opts)
 
+// Feynman panel (gui/feynman.py)
+export const feynmanCounts = (content) => call('feynman_counts', { content })
+export const feynmanAudioChunk = (upload, seq, data) => call('feynman_audio', { upload, seq, data })
+export const feynmanTranscribe = (upload, mime, opts) => runJob('feynman_transcribe', { upload, mime }, opts)
+export const feynmanMics = () => runJob('feynman_mics')
+export const feynmanMicAccess = (request = false) => call('feynman_mic_access', { request })
+export const feynmanOpenMicSettings = () => call('feynman_open_mic_settings')
+export const feynmanGrade = (content, line, transcript, opts) => runJob('feynman_grade', { content, line, transcript }, opts)
+
 // Sources
 export const srcForPaper = (paperId, folderPath = '') => call('src_for_paper', { paper_id: paperId, folder_path: folderPath })
 export const srcAttachPaperFile = (paperId) => call('src_attach_paper_file', { paper_id: paperId })
@@ -111,7 +120,7 @@ export function createAiSourcesMock(papers) {
   return {
     ai_status: () => ({ provider: cfg.provider, model: cfg.model, base_url: '', key_store: 'keychain',
       keys: Object.fromEntries(['anthropic', 'gemini', 'deepseek', 'openai'].map((p) => [p, { saved: !!keys[p], hint: keys[p] ? '••••••••' + keys[p].slice(-4) : '' }])),
-      usage: { drafts: 12, chats: 4, input_tokens: 18230, output_tokens: 4120 }, default_rules: 'One fact per card; keep answers under 8 words.\nPrefer cloze for numbers, doses, cut-offs and short lists.\nKeep the source\'s wording. Don\'t add facts that aren\'t in the selected text.\nNever invent a heading or a tag.', ready: true }),
+      usage: { drafts: 12, chats: 4, input_tokens: 18230, output_tokens: 4120 }, default_rules: 'One fact per card; keep answers under 8 words.\nPrefer cloze for numbers, doses, cut-offs and short lists.\nKeep the source\'s wording. Don\'t add facts that aren\'t in the selected text.\nNever invent a heading or a tag.', feynman_default_rules: 'You are grading a spoken explanation against the student\'s own notes.\n\n(mock: the real default comes from core/feynman.py)', ready: true }),
     ai_save_key: ({ provider, key }) => { keys[provider] = key; return { ok: true, hint: '••••••••' + key.slice(-4), where: 'keychain' } },
     ai_delete_key: ({ provider }) => { delete keys[provider]; return { ok: true } },
     ai_test: ({ provider }) => startJob(provider === 'anthropic'
@@ -138,6 +147,56 @@ export function createAiSourcesMock(papers) {
       return startJob({ status: 'done', result: { text, model: cfg.model } }, text, 1500)
     },
     ai_poll: ({ job }) => (jobs[job] ? jobs[job]() : { status: 'missing' }),
+    // Feynman: a rough stand-in for core/feynman.py (one answer per card
+    // line, per {{deletion}} and per "+ " item).
+    feynman_counts: ({ content }) => {
+      const lines = String(content || '').split('\n')
+      const answersOn = (l) => {
+        const t = l.replace(/<!--.*?-->/g, '').trim()
+        if (/^#{1,6}\s/.test(t)) return 0
+        if (/^\+\s+\S/.test(t)) return 1
+        const cz = (t.match(/\{\{.+?\}\}/g) || []).length
+        if (cz) return cz
+        return /\s(>>|<>)\s/.test(t) ? 1 : 0
+      }
+      const counts = {}
+      const heads = []
+      lines.forEach((l, i) => { const m = l.trim().match(/^(#{1,6})\s/); if (m) heads.push([i, m[1].length]) })
+      heads.forEach(([i, lv], k) => {
+        if (lv > 3) return
+        let end = lines.length
+        for (const [j, lv2] of heads.slice(k + 1)) { if (lv2 <= lv) { end = j; break } }
+        let n = 0
+        for (let x = i; x < end; x++) n += answersOn(lines[x])
+        counts[String(i)] = n
+      })
+      return { counts }
+    },
+    feynman_audio: () => ({ ok: true }),
+    feynman_mic_access: () => ({ status: window.__mockMicAccess || 'granted' }),
+    feynman_open_mic_settings: () => { console.log('Mock: open microphone settings'); return { ok: true } },
+    feynman_mics: () => startJob({ status: 'done', result: { inputs: [
+      { name: 'Trevor’s AirPods Max', default: true }, { name: 'MacBook Pro Microphone', default: false }] } }, '', 300),
+    feynman_transcribe: () => startJob({ status: 'done', result: { provider: 'openai',
+      transcript: 'HFrEF is an ejection fraction of forty percent or less. The drugs that cut mortality are an ARNI, beta blockers and SGLT2 inhibitors. An ICD goes in when the EF is thirty-five or under after six months.' } }, '', 900),
+    feynman_grade: ({ content, line }) => {
+      const lines = String(content || '').split('\n')
+      const items = []
+      for (let i = line + 1; i < lines.length && items.length < 8; i++) {
+        const t = lines[i].replace(/<!--.*?-->/g, '').trim()
+        if (/^#{1,6}\s/.test(t) && i > line) break
+        const m = t.match(/^(.*?)\s>>\s(.+)$/)
+        if (m) items.push({ kind: 'basic', line: i, context: m[1], answer: m[2] })
+        else if (/^\+\s/.test(t)) items.push({ kind: 'list', line: i, context: 'List', answer: t.slice(2) })
+        else for (const c of t.matchAll(/\{\{(?:c\d+::)?(.+?)\}\}/g)) items.push({ kind: 'cloze', line: i, context: t.replace(c[0], '___'), answer: c[1] })
+      }
+      const verdicts = ['covered', 'covered', 'missed', 'covered', 'contradicted', 'covered', 'missed', 'covered']
+      const out = items.map((it, k) => ({ ...it, id: k + 1, verdict: verdicts[k % verdicts.length], heard: '',
+        note: verdicts[k % verdicts.length] === 'contradicted' ? 'You said six months' : verdicts[k % verdicts.length] === 'missed' ? 'Not mentioned' : '' }))
+      const covered = out.filter((x) => x.verdict === 'covered').length
+      return startJob({ status: 'done', result: { items: out, covered, total: out.length,
+        score: out.length ? Math.round((covered * 100) / out.length) : 0, model: cfg.model } }, '', 1200)
+    },
     ai_cancel: ({ job }) => { jobs[job] = () => ({ status: 'canceled' }); return { ok: true } },
     src_for_paper: ({ paper_id }) => {
       const p = papers.find((x) => x.id === paper_id)

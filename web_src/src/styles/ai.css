@@ -81,6 +81,9 @@
   padding: 9px 11px; cursor: pointer; color: var(--text-secondary); font-family: var(--font-sans); font-size: 12px;
 }
 .settings-ai .ai-provider b { display: block; color: var(--text-primary); font-size: 13px; margin-bottom: 2px; }
+.settings-ai .settings-ai-rule { border: none; border-top: 1px solid var(--border); margin: 22px 0 16px; }
+.settings-ai .feynman-steps { margin: 0 0 14px; padding-left: 20px; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+.settings-ai .feynman-steps b { color: var(--text-primary); font-weight: 600; }
 .settings-ai .ai-provider.active { border-color: var(--accent); background: var(--bg-hover); }
 .settings-ai .ai-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 12px; }
 .settings-ai .ai-row .grow { flex: 1; min-width: 200px; }
@@ -309,3 +312,114 @@ table.fs-map select { width: 100%; background: var(--bg-surface); color: var(--t
 .editor-toolbar.scrollable::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 .editor-toolbar.scrollable::-webkit-scrollbar-track { background: transparent; }
 .context-item-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+
+/* ─── Feynman panel (FeynmanPanel.jsx) ─────────────────────────────── */
+.header-feynman-btn { font: 600 15px/16px Georgia, 'Times New Roman', serif; width: 28px; justify-content: center; }
+.feynman-panel { display: flex; flex-direction: column; width: 320px; min-width: 280px; height: 100%; background: var(--bg-secondary); border-left: 1px solid var(--border); }
+.feynman-badge {
+  width: 20px; height: 20px; border-radius: 5px; background: var(--accent-fill); color: var(--on-accent);
+  display: inline-flex; align-items: center; justify-content: center; font: 600 12px/1 Georgia, 'Times New Roman', serif;
+}
+.feynman-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+.feynman-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+.feynman-topic { position: relative; }
+.feynman-topic-btn {
+  width: 100%; display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary);
+  font: 500 12.5px var(--font-sans); text-align: left; cursor: pointer;
+}
+.feynman-topic-btn:hover:not(:disabled) { border-color: var(--border-hover); }
+.feynman-topic-btn:disabled { opacity: 0.6; cursor: default; }
+.feynman-topic-btn svg { color: var(--text-muted); flex-shrink: 0; }
+.feynman-menu {
+  position: absolute; left: 0; right: 0; top: calc(100% - 14px); z-index: 40; max-height: 360px; display: flex; flex-direction: column;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 4px 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.feynman-menu .outline-list { overflow-y: auto; }
+.feynman-last { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+.feynman-mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 4px 0; }
+.feynman-mic {
+  width: 60px; height: 60px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-primary);
+  color: var(--accent); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all var(--transition);
+}
+.feynman-mic:hover:not(:disabled) { border-color: var(--accent); background: var(--bg-hover); }
+.feynman-mic:disabled { opacity: 0.45; cursor: default; }
+.feynman-mic.is-busy:disabled { opacity: 1; color: var(--text-muted); }
+.feynman-mic.is-recording { background: var(--red); border-color: var(--red); color: #fff; animation: feynman-pulse 1.6s ease-in-out infinite; }
+@keyframes feynman-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.45); } 50% { box-shadow: 0 0 0 8px rgba(231, 76, 60, 0); } }
+.feynman-mic-hint { font-size: 12px; color: var(--text-secondary); text-align: center; }
+.feynman-transcript {
+  font-size: 12.5px; line-height: 1.55; color: var(--text-muted); background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; min-height: 48px;
+}
+.feynman-transcript.has-text { color: var(--text-primary); }
+.feynman-score-row { display: flex; align-items: baseline; gap: 8px; }
+.feynman-score { font-size: 26px; font-weight: 600; }
+.feynman-frac { font-size: 11.5px; color: var(--text-muted); }
+.feynman-score.is-good { color: var(--green); }
+.feynman-score.is-mid { color: var(--orange); }
+.feynman-score.is-low { color: var(--red); }
+.feynman-bar { height: 5px; border-radius: 3px; background: var(--border); margin: 6px 0 8px; overflow: hidden; }
+.feynman-bar > div { height: 100%; transition: width 0.4s ease; }
+.feynman-bar > .is-good { background: var(--green); }
+.feynman-bar > .is-mid { background: var(--orange); }
+.feynman-bar > .is-low { background: var(--red); }
+.feynman-items { display: flex; flex-direction: column; }
+.feynman-item {
+  display: flex; gap: 7px; align-items: flex-start; text-align: left; width: 100%; padding: 6px 4px;
+  background: transparent; border: none; border-top: 1px solid var(--border); color: var(--text-primary);
+  font: 400 12.5px/1.4 var(--font-sans); cursor: pointer; border-radius: 0;
+}
+.feynman-item:hover { background: var(--bg-hover); }
+.feynman-item-icon { flex-shrink: 0; margin-top: 2px; }
+.feynman-item.is-covered .feynman-item-icon { color: var(--green); }
+.feynman-item.is-missed .feynman-item-icon { color: var(--text-muted); }
+.feynman-item.is-contradicted .feynman-item-icon { color: var(--red); }
+.feynman-item:not(.is-covered) .feynman-item-answer { color: var(--text-secondary); }
+.feynman-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.feynman-item-context { font-size: 11px; color: var(--text-muted); }
+.feynman-item-note { font-size: 11px; color: var(--orange); }
+.feynman-item.is-contradicted .feynman-item-note { color: var(--red); }
+.feynman-level { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: -6px; }
+.feynman-level > div { height: 100%; background: var(--green); transition: width 60ms linear; }
+.feynman-mic-select {
+  width: 100%; margin-top: -6px; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--bg-primary); color: var(--text-secondary); font: 400 12px var(--font-sans);
+}
+.feynman-playback { width: 100%; height: 32px; margin-top: -6px; }
+.feynman-submit {
+  width: 100%; height: 34px; margin-top: -6px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: none; border-radius: var(--radius-sm); background: var(--accent-fill); color: var(--on-accent);
+  font: 600 13px var(--font-sans); cursor: pointer;
+}
+.feynman-submit:hover { filter: brightness(1.08); }
+.feynman-regrade { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: -6px; }
+.feynman-foot { padding: 10px 12px; border-top: 1px solid var(--border); }
+.feynman-next {
+  width: 100%; height: 34px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: none; border-radius: var(--radius-sm); background: var(--accent-fill); color: var(--on-accent);
+  font: 600 13px var(--font-sans); cursor: pointer;
+}
+.feynman-next:hover:not(:disabled) { filter: brightness(1.08); }
+.feynman-next:disabled { opacity: 0.5; cursor: default; }
+
+/* The heading the panel is on, in the paper. */
+.block-row-wrapper.is-feynman-topic .block-row { background: var(--bg-hover); box-shadow: inset 3px 0 0 var(--accent); }
+
+/* A heading's last Feynman score: faint, after its text, the date on hover. */
+.heading-feynman {
+  position: relative; display: inline-block; margin-left: 10px; vertical-align: middle;
+  font: 400 11px/1 var(--font-sans); letter-spacing: 0; color: var(--text-muted); cursor: help;
+}
+/* Below the score, over the next line: the row lets it out while it's
+   hovered (rows clip for the fold animation) and sits above its neighbours. */
+.block-row-wrapper:has(.heading-feynman:hover) { position: relative; z-index: 6; }
+.block-row-wrapper:has(.heading-feynman:hover) .block-row-inner { overflow: visible; }
+.heading-feynman:hover::after {
+  content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px);
+  z-index: 30; width: max-content; max-width: 280px; white-space: normal;
+  background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);
+  font: 400 11.5px/1.4 var(--font-sans); padding: 6px 9px; border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}

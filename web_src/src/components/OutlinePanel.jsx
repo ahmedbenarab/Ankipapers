@@ -10,6 +10,7 @@ export default function OutlinePanel({ items, title, totalCards = 0, currentLine
   const listRef = useRef(null)
 
   const shown = items || []
+  const anyFlag = shown.some((it) => it.flag)
 
   const current = currentHeadingIndex(items || [], currentLine ?? 0)
 
@@ -39,10 +40,15 @@ export default function OutlinePanel({ items, title, totalCards = 0, currentLine
           <button
             key={it.index}
             type="button"
-            className={`outline-item h${it.level}${it.index === current ? ' current' : ''}`}
+            className={`outline-item h${it.level}${it.index === current ? ' current' : ''}${it.faded ? ' is-suspended' : ''}`}
             onClick={() => onJump?.(it.index)}
-            title={it.text}
+            title={it.faded ? `${it.text} (all suspended)` : it.text}
           >
+            {/* The heading's flag, left of its name; the weak-spot dots stay
+                on the right, so a red flag never reads as a leech. */}
+            {anyFlag && (
+              <span className="outline-flag" style={it.flag ? { background: `var(--flag-${it.flag})` } : { visibility: 'hidden' }} />
+            )}
             <span className="outline-text">{it.text}</span>
             {(it.leech || it.weak) && (
               <span className={`outline-dot${it.leech ? ' is-leech' : ''}`}

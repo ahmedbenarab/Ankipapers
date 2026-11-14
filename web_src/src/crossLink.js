@@ -1,8 +1,14 @@
 /**
  * Cross-link: paper lines ↔ Anki notes via card_refs.
- * Matching uses content_hash (primary) and line_index (fallback).
+ * Matching, in order: the line's own hidden card ID (<!--ap:uuid-->, which
+ * Generate records as block_id), then content_hash, then line_index -- the
+ * last only for a line with no card ID of its own.
  * Python opens Browse with search_for("nid:" + id).
  */
+
+import { getApBlockId, stripApBlockId } from './docLinks.js'
+import { stripTagMarks } from './qbankTags.js'
+import { stripFlagComments } from './cardFlags.js'
 
 /** Cursor line index (0-based) for content split by \n */
 export function getLineIndexAtCursor(text, cursorPos) {
@@ -91,56 +97,65 @@ function computeHash(text) {
 }
 
 /**
- * Resolve anki_note_id for a given line.
- * Strategy: content_hash match (robust to line moves) → line_index fallback.
+ * A card line's text as Python hashes it (core/parser.parse_line): bullet,
+ * hidden card ID, question ids, flag and [[tags]] removed. Hashing the raw
+ * line instead -- card ID and all -- never matched a generated card, so every
+ * line fell through to its saved line number, and once lines shifted it was
+ * matched to its neighbor's note.
  */
+function hashableContent(lineText) {
+  const content = extractCardContent(stripApBlockId(lineText ?? ''))
+  return stripFlagComments(stripTagMarks(content)).replace(/\[\[(.*?)\]\]/g, '').trim()
+}
+
+/** Resolve anki_note_id for a given line (see resolveNoteIdFromIndex). */
 export function resolveNoteIdForLine(lineIndex, lineText, cardRefs) {
-  if (!cardRefs || !Array.isArray(cardRefs) || !cardRefs.length) return null
-
-  const cardContent = extractCardContent(lineText)
-  if (cardContent) {
-    const hash = computeHash(cardContent)
-    const byHash = cardRefs.find((r) => r.content_hash === hash)
-    if (byHash?.anki_note_id != null) return byHash.anki_note_id
-  }
-
-  const byLine = cardRefs.find((r) => r.line_index === lineIndex)
-  return byLine?.anki_note_id != null ? byLine.anki_note_id : null
+  return resolveNoteIdFromIndex(lineIndex, lineText, buildCardRefIndex(cardRefs))
 }
 
 /**
- * Indexed variant of the above, for callers that need to resolve the note
- * ID for MANY lines against the same card_refs array (e.g. rendering every
- * card block in a document). resolveNoteIdForLine() rescans the whole
- * card_refs array (twice) per call, which is fine for a single lookup but
- * turns into O(cards²) work when called once per card in the document on
- * every keystroke. buildCardRefIndex() does that scan once; resolveNoteIdFromIndex()
- * then does an O(1) Map lookup per line, with identical match semantics
- * ("first entry with this content_hash / this line_index wins", exactly
- * matching what Array.prototype.find() above returns).
+ * For callers that resolve the note ID for MANY lines against the same
+ * card_refs array (e.g. rendering every card block in a document):
+ * buildCardRefIndex() scans card_refs once, and resolveNoteIdFromIndex() then
+ * does O(1) Map lookups per line. The first entry with a given card ID /
+ * content_hash / line_index wins.
  */
 export function buildCardRefIndex(cardRefs) {
+  const byBlock = new Map()
   const byHash = new Map()
   const byLine = new Map()
   if (Array.isArray(cardRefs)) {
     for (const r of cardRefs) {
+      if (r && r.block_id && !byBlock.has(r.block_id.toLowerCase())) byBlock.set(r.block_id.toLowerCase(), r)
       if (r && r.content_hash != null && !byHash.has(r.content_hash)) byHash.set(r.content_hash, r)
       if (r && r.line_index != null && !byLine.has(r.line_index)) byLine.set(r.line_index, r)
     }
   }
-  return { byHash, byLine }
+  return { byBlock, byHash, byLine }
 }
 
 export function resolveNoteIdFromIndex(lineIndex, lineText, index) {
-  if (!index || (index.byHash.size === 0 && index.byLine.size === 0)) return null
+  if (!index || (index.byBlock.size === 0 && index.byHash.size === 0 && index.byLine.size === 0)) return null
 
-  const cardContent = extractCardContent(lineText)
+  // 1. The line's own card ID: exact, however far the line has moved.
+  const blockId = getApBlockId(lineText)
+  if (blockId) {
+    const byBlock = index.byBlock.get(blockId)
+    if (byBlock?.anki_note_id != null) return byBlock.anki_note_id
+  }
+
+  // 2. Its text, hashed the way Generate hashed it.
+  const cardContent = hashableContent(lineText)
   if (cardContent) {
-    const hash = computeHash(cardContent)
-    const byHash = index.byHash.get(hash)
+    const byHash = index.byHash.get(computeHash(cardContent))
     if (byHash?.anki_note_id != null) return byHash.anki_note_id
   }
 
+  // 3. Its saved line number -- only for a line with no card ID, and only a
+  //    record that has none either. A line with an ID that isn't in card_refs
+  //    hasn't been generated yet, and a record with an ID belongs to the line
+  //    carrying it, wherever that line is now.
+  if (blockId) return null
   const byLine = index.byLine.get(lineIndex)
-  return byLine?.anki_note_id != null ? byLine.anki_note_id : null
+  return byLine?.anki_note_id != null && !byLine.block_id ? byLine.anki_note_id : null
 }

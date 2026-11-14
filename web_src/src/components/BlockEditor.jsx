@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
-import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, SquareDashedMousePointer } from 'lucide-react'
+import { GripVertical, ExternalLink, ChevronDown, ChevronRight, Copy, Check, Flag, SquareDashedMousePointer, TriangleAlert } from 'lucide-react'
 import { openInBrowser, pasteImage, getClipboardText, getOcclusionCounts, createOcclusion, editOcclusion, OCCLUSIONS_CHANGED_EVENT } from '../bridge'
 import WeakSpotHover from './WeakSpotHover'
 import DraftGroup from './DraftGroup'
@@ -18,6 +18,7 @@ import {
   toggleTagSegment,
   findTextReplacement,
 } from '../blockFormat'
+import { listLines } from '../listCards'
 
 const TABLE_SIZE_LABELS = { s: '40%', m: '60%', l: '80%', full: 'full width' }
 import {
@@ -28,6 +29,8 @@ import {
   ensureApBlockId,
   buildApUrl,
   reindentKeepingAnchor,
+  attachApSuffix,
+  splitLineKeepingAnchor,
 } from '../docLinks'
 
 import {
@@ -42,6 +45,32 @@ import {
   isFenceCloseLine,
   arrowsFromSpaces,
 } from '../codeBlocks'
+import { stripTagMarks, findTagShortcut, addTagMarks, tagMarksIn, otherMarkComments, DEFAULT_SHORTCUTS } from '../qbankTags'
+import { stripFlagComments, findFlagShortcut, setFlagComment, flagWordIn, FLAG_NAMES } from '../cardFlags'
+import { lineFlags, ankiFlagOf, takesLineMarks } from '../lineMarks'
+import { buildOutline } from '../outline'
+import { readFeynman, feynmanTip } from '../feynman'
+
+/** A line's text without its hidden marks (question ids, flag). */
+function stripLineMarks(text) {
+  return stripFlagComments(stripTagMarks(text))
+}
+
+/**
+ * Enter: a line's hidden marks (<!--uw::...-->, <!--flag:...-->) belong to
+ * the line's text like its anchor does, so a split before them keeps them on
+ * the top line -- unless the whole text is moving down. Returns [before, after].
+ */
+function keepMarksOnTop(before, after) {
+  const marks = tagMarksIn(after)
+  const flag = flagWordIn(after)
+  const feynman = otherMarkComments(after) // a heading's last Feynman session
+  if (!before.trim() || (!marks.length && !flag && !feynman)) return [before, after]
+  let top = marks.length ? addTagMarks(before, marks) : before
+  if (feynman) top = top.replace(/\s+$/, '') + feynman
+  if (flag) top = setFlagComment(top, flag)
+  return [top, stripLineMarks(after)]
+}
 
 // Shown next to "Paste blocks" and used in its error message.
 const IS_MAC = typeof navigator !== 'undefined' &&
@@ -50,6 +79,8 @@ const PASTE_HINT = IS_MAC ? '\u2318V' : 'Ctrl+V'
 // Modifier on its own, for the menu row that tells you how to paste.
 const PASTE_MOD = IS_MAC ? '\u2318' : 'Ctrl'
 
+// Retired with the [[...]] paper links: [[...]] is a card tag, not a link to a paper (2026-10-24).
+/*
 function ZettelkastenSearch({ query, selected, papers }) {
   const results = useMemo(() => {
     return papers.filter(p => p.title.toLowerCase().includes(query.toLowerCase()))
@@ -73,6 +104,7 @@ function ZettelkastenSearch({ query, selected, papers }) {
     </div>
   )
 }
+*/
 
 /**
  * Block Editor — Notion-like editing experience.
@@ -105,13 +137,14 @@ function getNextClozeNumberInLine(line) {
 }
 
 function countCards(blocks) {
-  let basic = 0, reversible = 0, cloze = 0
+  let basic = 0, reversible = 0, cloze = 0, list = 0
   for (const b of blocks) {
     if (b.type === 'basic') basic++
     else if (b.type === 'reversible') reversible++
     else if (b.type === 'cloze') cloze++
+    if (b.listCount) list++
   }
-  return { basic, reversible, cloze }
+  return { basic, reversible, cloze, list }
 }
 
 /** Wrap selection in a single-line block (same idea as SourceEditor textarea). */
@@ -271,8 +304,135 @@ function mediaImageName(line) {
 }
 
 // ─── Rendered block ─────────────────────────────────
-function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion }) {
-  const t = stripApBlockId(line).trim()
+// [[NH]] ("no heading") on a card line, any case and spacing. The paper keeps
+// it; the editor draws it as N̸ in the card's capsule instead of as text.
+const NH_RE = /\[\[\s*nh\s*\]\]/gi
+
+const CARD_TYPE_INFO = {
+  basic: ['BASIC', 'Basic card: question, then answer.'],
+  reversible: ['REVERSIBLE', 'Reversible card: asked both ways round.'],
+  cloze: ['CLOZE', 'Cloze card: fill in the hidden words.'],
+  item: ['ITEM', 'List item: one card of the list above, recalled in order, with its own schedule.'],
+}
+
+/**
+ * The capsule at the right edge of a card line: everything known about the
+ * card, one compartment each, divided by thin rules -- lapses (⚠ 3, red for
+ * a leech), its Anki flag, ⓢ when suspended, N̸ for [[NH]], and its type.
+ * A compartment that doesn't apply, or whose setting is off (Weak-Spot
+ * Markers, Suspended Cards, Card Type Badges), is simply left out; each one
+ * says what it means on hover. The open-in-Anki button sits just outside.
+ */
+function CardMeta({ type, noteId, weakStatus, weakLapses, flag, flagCounts = null, suspendedCards, cardCount, noHeading, showType, listCount = 0, isListParent = false }) {
+  const many = cardCount > 1
+  const segs = []
+  if (weakStatus) {
+    const leech = weakStatus === 'leech'
+    segs.push(
+      <span key="lapses" className={`card-meta-seg card-meta-lapses${leech ? ' is-leech' : ''}`}
+        data-tip={isListParent
+          ? (leech ? `An item of this list is a leech: ${weakLapses} lapses.` : `The weakest item has ${weakLapses} ${weakLapses === 1 ? 'lapse' : 'lapses'}.`)
+          : (leech ? `This card is a leech: ${weakLapses} lapses.` : `This card has ${weakLapses} ${weakLapses === 1 ? 'lapse' : 'lapses'}.`)}>
+        <TriangleAlert size={11} strokeWidth={2.4} />{weakLapses}
+      </span>
+    )
+  }
+  if (flagCounts && flagCounts.length) {
+    // A list's items, one flag per color with how many items carry it.
+    const tip = flagCounts.map(([f, n], k) => `${n} ${k === 0 ? (n === 1 ? 'item' : 'items') : ''} flagged ${FLAG_NAMES[f] || ''}`.replace(/  +/g, ' ')).join(', ')
+    segs.push(
+      <span key="flag" className="card-meta-seg card-meta-flags" data-tip={`${tip.charAt(0).toUpperCase()}${tip.slice(1)}.`}>
+        {flagCounts.map(([f, n]) => (
+          <span key={f} className="card-meta-flag-count">
+            <Flag size={12} strokeWidth={2.4} style={{ color: `var(--flag-${f})` }} />{n}
+          </span>
+        ))}
+      </span>
+    )
+  } else if (flag > 0) {
+    const name = FLAG_NAMES[flag] || ''
+    segs.push(
+      <span key="flag" className="card-meta-seg" data-tip={`${many ? 'These cards are' : 'This card is'} flagged ${name}.`}>
+        <Flag size={12} strokeWidth={2.4} style={{ color: `var(--flag-${flag})` }} />
+      </span>
+    )
+  }
+  if (suspendedCards > 0) {
+    const tip = isListParent
+      ? (suspendedCards >= cardCount ? 'Every item of this list is suspended.' : `${suspendedCards} of ${cardCount} items are suspended.`)
+      : suspendedCards >= cardCount
+        ? (many ? 'These cards are suspended.' : 'This card is suspended.')
+        : `${suspendedCards} of ${cardCount} cards on this line are suspended.`
+    segs.push(<span key="sus" className="card-meta-seg card-meta-sus" data-tip={tip}>ⓢ</span>)
+  }
+  if (noHeading) {
+    segs.push(
+      <span key="nh" className="card-meta-seg" data-tip="No heading: this card doesn't show the headings above it.">
+        <span className="card-meta-nh">N</span>
+      </span>
+    )
+  }
+  if (showType && CARD_TYPE_INFO[type]) {
+    const [label, tip] = CARD_TYPE_INFO[type]
+    segs.push(<span key="type" className={`card-meta-seg card-meta-type is-${type}`} data-tip={tip}>{label}</span>)
+  }
+  if (showType && listCount > 0) segs.push(<ListSeg key="list" count={listCount} />)
+  if (!segs.length && !noteId) return null
+  return (
+    <div className="card-meta-side">
+      {segs.length > 0 && <span className="card-meta">{segs}</span>}
+      {noteId && (
+        <button className="block-card-browser-btn" title="Open in Anki" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
+          <ExternalLink size={10} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A line with "+ " children is also a list card (one card per item). Its
+ * capsule says so: "LIST · 3". A line that is a card as well keeps its own
+ * capsule and gains the compartment; any other line gets a capsule of its own.
+ */
+function RenderBlock(props) {
+  const { type, line, listCount = 0, listNoteId = null, showType = true, listSummary = '' } = props
+  const isCard = type === 'basic' || type === 'reversible' || type === 'cloze'
+  if (!listCount || isCard) return <RenderBlockInner {...props} />
+  // listSummary: "status|lapses|suspended|cards|f:n,f:n" (a string, so the
+  // memoized Block re-renders only when it changes). See listSummaryOf.
+  const [status, lapses, suspended, cards, flags] = String(listSummary).split('|')
+  const flagCounts = (flags || '').split(',').filter(Boolean).map((x) => x.split(':').map(Number))
+  const noHeading = /\[\[\s*nh\s*\]\]/i.test(stripApBlockId(line))
+  return (
+    <div className="block-card block-list-parent">
+      <div className="block-card-body"><RenderBlockInner {...props} /></div>
+      <CardMeta type={null} noteId={listNoteId} weakStatus={status || null} weakLapses={Number(lapses) || 0}
+        flagCounts={flagCounts} suspendedCards={Number(suspended) || 0} cardCount={Number(cards) || 0}
+        noHeading={noHeading} showType={showType} listCount={listCount} isListParent />
+    </div>
+  )
+}
+
+function ListSeg({ count }) {
+  return (
+    <span className="card-meta-seg card-meta-type is-list"
+      data-tip={`List card: ${count} ${count === 1 ? 'item' : 'items'}, recalled in order, each with its own schedule.`}>
+      LIST · {count}
+    </span>
+  )
+}
+
+function RenderBlockInner({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '', feynmanScore = null, feynmanTip: fTip = '', showType = true, listCount = 0 }) {
+  const isCard = type === 'basic' || type === 'reversible' || type === 'cloze'
+  const raw = stripApBlockId(line).trim()
+  const noHeading = (isCard || listCount > 0) && NH_RE.test(raw)
+  NH_RE.lastIndex = 0
+  const t = noHeading ? raw.replace(NH_RE, ' ').replace(/[ \t]{2,}/g, ' ').trim() : raw
+  const meta = isCard && (
+    <CardMeta type={type} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} flag={ankiFlag}
+      suspendedCards={suspendedCards} cardCount={cardCount} noHeading={noHeading} showType={showType} listCount={listCount} />
+  )
 
   // Cells come from the shared parseTableRow rather than a local copy. The
   // copy that used to live here stripped a trailing "|" with /\|$/ — which
@@ -288,7 +448,32 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
     const m = t.match(/^(#{1,6})\s+(.+)$/)
     const level = m[1].length
     const Tag = `h${level}`
-    return <Tag className={`block-heading block-h${level}`} dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
+    // The last Feynman score, faint, straight after the text; the date is in
+    // its tooltip (feynman.js).
+    let html = formatInlineProp(m[2], mediaDir)
+    if (feynmanScore != null) {
+      const tip = String(fTip).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+      html = { __html: `${html.__html}<span class="heading-feynman" data-tip="${tip}">${Number(feynmanScore)}%</span>` }
+    }
+    if (!headCards && !headSus) {
+      return <Tag className={`block-heading block-h${level}`} dangerouslySetInnerHTML={html} />
+    }
+    // H1–H3: how many card lines sit under the heading (the Outline's count)
+    // and how many are suspended, at the right edge (Settings → Card Counts,
+    // Suspended Cards).
+    return (
+      <div className="block-heading-wrap">
+        <Tag className={`block-heading block-h${level} has-meta`} dangerouslySetInnerHTML={html} />
+        <span className="heading-meta">
+          {headSus && <span className="heading-suspended">ⓢ {headSus}</span>}
+          {headCards > 0 && (
+            <span className="heading-count" data-tip={`This section has ${headCards} ${headCards === 1 ? 'card' : 'cards'}.`}>
+              {headCards}
+            </span>
+          )}
+        </span>
+      </div>
+    )
   }
 
   if (type === 'blockquote') {
@@ -399,23 +584,13 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
     const content = t.replace(/^\s*[-*]\s+/, '')
     const m = content.match(BASIC_CARD_RE)
     if (m) return (
-      <div className={`block-card block-card-basic${weakStatus ? ' has-weak' : ''}`}>
-        <div className="block-card-type">
-          {weakStatus && (
-            <i className={`weak-pill is-${weakStatus}`}>
-              {weakStatus === 'leech' ? `Leech · ${weakLapses} lapses` : `${weakLapses} lapses`}
-            </i>
-          )}
-          <span>BASIC</span>
-          {noteId && (
-            <button className="block-card-browser-btn" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
-              <ExternalLink size={10} />
-            </button>
-          )}
+      <div className="block-card block-card-basic">
+        <div className="block-card-body">
+          <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
+          <div className="block-card-sep">▼</div>
+          <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
         </div>
-        <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
-        <div className="block-card-sep">▼</div>
-        <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
+        {meta}
       </div>
     )
   }
@@ -424,45 +599,22 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
     const content = t.replace(/^\s*[-*]\s+/, '')
     const m = content.match(/^(.+?)\s*<>\s*(.+)$/)
     if (m) return (
-      <div className={`block-card block-card-reversible${weakStatus ? ' has-weak' : ''}`}>
-        <div className="block-card-type reversible">
-          {weakStatus && (
-            <i className={`weak-pill is-${weakStatus}`}>
-              {weakStatus === 'leech' ? `Leech · ${weakLapses} lapses` : `${weakLapses} lapses`}
-            </i>
-          )}
-          <span>REVERSIBLE</span>
-          {noteId && (
-            <button className="block-card-browser-btn" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
-              <ExternalLink size={10} />
-            </button>
-          )}
+      <div className="block-card block-card-reversible">
+        <div className="block-card-body">
+          <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
+          <div className="block-card-sep">⇅</div>
+          <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
         </div>
-        <div className="block-card-front" dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} />
-        <div className="block-card-sep">⇅</div>
-        <div className="block-card-back" dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
+        {meta}
       </div>
     )
   }
 
   if (type === 'cloze') {
     return (
-      <div className={`block-cloze-wrapper${weakStatus ? ' has-weak' : ''}`}>
-        {/* Injected the standard card type container with a specific cloze class */}
-        <div className="block-card-type cloze-type">
-          {weakStatus && (
-            <i className={`weak-pill is-${weakStatus}`}>
-              {weakStatus === 'leech' ? `Leech · ${weakLapses} lapses` : `${weakLapses} lapses`}
-            </i>
-          )}
-          <span>CLOZE</span>
-          {noteId && (
-            <button className="block-card-browser-btn" onClick={(e) => { e.stopPropagation(); openInBrowser(noteId); }}>
-              <ExternalLink size={10} />
-            </button>
-          )}
-        </div>
+      <div className="block-cloze-wrapper">
         <div className="block-cloze" dangerouslySetInnerHTML={formatInlineProp(t, mediaDir)} />
+        {meta}
       </div>
     )
   }
@@ -470,6 +622,18 @@ function RenderBlock({ line, type, mediaDir, onResize, onTableResize, noteId, we
   if (type === 'bullet') {
     const m = t.match(/^\s*[-*]\s+(.+)$/)
     return <div className="block-list-item"><span className="block-bullet">•</span><span dangerouslySetInnerHTML={formatInlineProp(m[1], mediaDir)} /></div>
+  }
+
+  if (type === 'list-item') {
+    const m = t.match(/^\+\s+(.*)$/)
+    // Each item is a card of its own: its own capsule (lapses, flag, ⓢ, ITEM).
+    return (
+      <div className="block-card block-lol-row">
+        <div className="block-card-body block-list-item block-lol-item"><span className="block-lol-caret" aria-hidden="true">+</span><span dangerouslySetInnerHTML={formatInlineProp(m ? m[1] : t, mediaDir)} /></div>
+        <CardMeta type="item" noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} flag={ankiFlag}
+          suspendedCards={suspendedCards} cardCount={cardCount} noHeading={false} showType={showType} />
+      </div>
+    )
   }
 
   if (type === 'numbered') {
@@ -719,6 +883,9 @@ function syncBlockTextareaHeight(el) {
 
 const Block = React.memo(function Block({
   blockId,
+  listCount = 0,
+  listNoteId = null,
+  listSummary = '',
   line,
   type,
   focused,
@@ -744,13 +911,21 @@ const Block = React.memo(function Block({
   isCollapsed,
   onToggleCollapse,
   blockKey,
-  onZettelSearch,
+  // onZettelSearch,  // retired with the [[...]] paper links
   weakStatus = null,
   weakLapses = 0,
   codeInfo = null,
   codeActive = false,
   occlusionCards = 0,
   onOpenOcclusion,
+  ankiFlag = 0,
+  suspendedCards = 0,
+  cardCount = 0,
+  headCards = 0,
+  headSus = '',
+  feynmanScore = null,
+  feynmanTip: feynmanTipText = '',
+  showType = true,
   onCreateOcclusion,
 }) {
   const inputRef = useRef(null)
@@ -801,16 +976,17 @@ const Block = React.memo(function Block({
       data-block-id={blockId}
       draggable={!focused && !dragDisabled}
       onClick={(e) => {
-        const zettelEl = e.target.closest('.block-zettel-link')
-        if (zettelEl) {
-          // Allow jump if not focused OR if Ctrl/Cmd is held while focused
-          if (!focused || e.ctrlKey || e.metaKey) {
-            e.preventDefault()
-            e.stopPropagation()
-            if (window.openZettel) window.openZettel(zettelEl.dataset.title)
-            return
-          }
-        }
+        // [[...]] paper links are retired ([[...]] is a card tag, not a link to a paper (2026-10-24)):
+        // const zettelEl = e.target.closest('.block-zettel-link')
+        // if (zettelEl) {
+        //   // Allow jump if not focused OR if Ctrl/Cmd is held while focused
+        //   if (!focused || e.ctrlKey || e.metaKey) {
+        //     e.preventDefault()
+        //     e.stopPropagation()
+        //     if (window.openZettel) window.openZettel(zettelEl.dataset.title)
+        //     return
+        //   }
+        // }
         // Document links open on DOUBLE-click (see onDoubleClick below), so a
         // single click on one must not swap the block into an editing textarea
         // — the second click would then have no link element to land on. To
@@ -881,17 +1057,18 @@ const Block = React.memo(function Block({
                   scheduleRestoreSelection(inputRef, at, at)
                 }
               }
-              if (onZettelSearch) {
-                const selStart = e.target.selectionStart
-                const textBefore = e.target.value.slice(0, selStart)
-                const lastO = textBefore.lastIndexOf('[[')
-                const lastC = textBefore.lastIndexOf(']]')
-                if (lastO !== -1 && lastO > lastC) {
-                  onZettelSearch(blockId, textBefore.slice(lastO + 2))
-                } else {
-                  onZettelSearch(blockId, null)
-                }
-              }
+              // Typing [[ used to open a paper picker. Retired: [[...]] is a card tag, not a link to a paper (2026-10-24).
+              // if (onZettelSearch) {
+              //   const selStart = e.target.selectionStart
+              //   const textBefore = e.target.value.slice(0, selStart)
+              //   const lastO = textBefore.lastIndexOf('[[')
+              //   const lastC = textBefore.lastIndexOf(']]')
+              //   if (lastO !== -1 && lastO > lastC) {
+              //     onZettelSearch(blockId, textBefore.slice(lastO + 2))
+              //   } else {
+              //     onZettelSearch(blockId, null)
+              //   }
+              // }
             }}
             onInput={(e) => syncBlockTextareaHeight(e.target)}
             onKeyDown={e => onKeyDown(e, blockId)}
@@ -899,7 +1076,7 @@ const Block = React.memo(function Block({
         ) : codeInfo ? (
           <CodeRow type={type} info={codeInfo} active={codeActive} text={actualText} depth={codeSplit ? codeSplit.depth : 0} />
         ) : (
-          <RenderBlock line={actualText} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} />
+          <RenderBlock line={stripLineMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} feynmanScore={feynmanScore} feynmanTip={feynmanTipText} showType={showType} listCount={listCount} listNoteId={listNoteId} listSummary={listSummary} />
         )}
       </div>
     </div>
@@ -944,7 +1121,7 @@ function draftPlacement(lines, at) {
 }
 
 // ─── Block Editor ───────────────────────────────────
-const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, onChange, onCardCountChange, settings, mediaDir, cardRefs, onTableEditRequest, onGoToSource, onOpenDocLink, onRequestCreateLink, onNotify, papers = [], textReplacements = null, onHistoryCheckpoint, noteStats = null, weakOnly = false, onUnsuspendNote, onVisibleLineChange, draftGroup = null, onRequestDraft, onDraftAccept, onDraftDiscard, onDraftRedo, onDraftEdit, onDraftRedraft, onDraftCancel, onOpenAiSettings }, ref) {
+const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, onChange, onCardCountChange, settings, mediaDir, cardRefs, onTableEditRequest, onGoToSource, onOpenDocLink, onRequestCreateLink, onNotify, papers = [], textReplacements = null, onHistoryCheckpoint, noteStats = null, weakOnly = false, onUnsuspendNote, onVisibleLineChange, draftGroup = null, onRequestDraft, onDraftAccept, onDraftDiscard, onDraftRedo, onDraftEdit, onDraftRedraft, onDraftCancel, onOpenAiSettings, feynmanTopic = null }, ref) {
   const [focusedIndex, setFocusedIndex] = useState(null)
   const [selectedIndices, setSelectedIndices] = useState(() => new Set())
   const [selectionAnchor, setSelectionAnchor] = useState(null)
@@ -1053,7 +1230,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   // line -- cleared that bar and folded the whole document up mid-edit.
 
   const [lasso, setLasso] = useState(null)
-  const [zettelSearch, setZettelSearch] = useState(null)
+  // const [zettelSearch, setZettelSearch] = useState(null)  // retired with the [[...]] paper links
   const containerRef = useRef(null)
   const blockMenuRef = useRef(null)
   const activeBlockInputRef = useRef(null)
@@ -1213,6 +1390,16 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       }
     }
 
+    // List cards: a line with "+ " children is one note with a card per item.
+    // b.list says which list a parent or item line belongs to (listCards.js).
+    const lists = listLines(lines, cardRefIndex)
+    for (let i = 0; i < parsed.length; i++) {
+      const L = parsed[i].code ? null : lists.get(i) || null
+      parsed[i].list = L
+      parsed[i].listCount = L?.kind === 'parent' ? L.count : 0
+      parsed[i].listNoteId = L?.kind === 'parent' ? L.noteId : null
+    }
+
     const hiddenIndices = new Set()
     for (let i = 0; i < parsed.length; i++) {
         const current = parsed[i]
@@ -1260,26 +1447,30 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   papersRef.current = papers
   const blocksRef = useRef(blocks)
   blocksRef.current = blocks
-  const zettelSearchRef = useRef(zettelSearch)
-  zettelSearchRef.current = zettelSearch
+  // const zettelSearchRef = useRef(zettelSearch)  // retired with the [[...]] paper links
+  // zettelSearchRef.current = zettelSearch
   const focusedIndexRef = useRef(focusedIndex)
   focusedIndexRef.current = focusedIndex
   const selectionAnchorRef = useRef(selectionAnchor)
   selectionAnchorRef.current = selectionAnchor
   const textReplacementsRef = useRef(textReplacements)
   textReplacementsRef.current = textReplacements
+  // Settings -> Cards -> Tag Shortcuts, for "uw::3252" + Space (qbankTags.js).
+  const tagShortcutsRef = useRef(DEFAULT_SHORTCUTS)
+  tagShortcutsRef.current = Array.isArray(settings?.tag_shortcuts) ? settings.tag_shortcuts : DEFAULT_SHORTCUTS
   const onHistoryCheckpointRef = useRef(onHistoryCheckpoint)
   onHistoryCheckpointRef.current = onHistoryCheckpoint
 
-  const handleZettelSearch = useCallback((blockId, query) => {
-    const index = idToIndexRef.current.get(blockId)
-    if (index === undefined) return
-    if (query !== null) {
-      setZettelSearch(prev => (prev?.index === index && prev?.query === query) ? prev : { index, query, selected: 0 })
-    } else {
-      setZettelSearch(null)
-    }
-  }, [])
+  // Retired with the [[...]] paper links ([[...]] is a card tag, not a link to a paper (2026-10-24)):
+  // const handleZettelSearch = useCallback((blockId, query) => {
+  //   const index = idToIndexRef.current.get(blockId)
+  //   if (index === undefined) return
+  //   if (query !== null) {
+  //     setZettelSearch(prev => (prev?.index === index && prev?.query === query) ? prev : { index, query, selected: 0 })
+  //   } else {
+  //     setZettelSearch(null)
+  //   }
+  // }, [])
 
   const handleBlockChange = useCallback((blockId, newValue) => {
     const index = idToIndexRef.current.get(blockId)
@@ -1389,8 +1580,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     // have frozen this closure on stale collapse/autocomplete state instead.
     const content = contentRef.current
     const blocks = blocksRef.current
-    const zettelSearch = zettelSearchRef.current
-    const papers = papersRef.current
+    // const zettelSearch = zettelSearchRef.current  // retired with the [[...]] paper links
+    // const papers = papersRef.current
     const lines = content.split('\n')
 
     const currentLine = lines[index]
@@ -1408,44 +1599,45 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const leadingSpaces = codeSplitK ? codeSplitK.prefix : (currentSpacesMatch ? currentSpacesMatch[0] : '')
     const actualText = currentDisplay.slice(leadingSpaces.length)
 
-    if (zettelSearch && zettelSearch.index === index) {
-      const results = papers.filter(p => p.title.toLowerCase().includes(zettelSearch.query.toLowerCase()))
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setZettelSearch(prev => ({ ...prev, selected: Math.min(prev.selected + 1, results.length - 1) }))
-        return
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setZettelSearch(prev => ({ ...prev, selected: Math.max(prev.selected - 1, 0) }))
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setZettelSearch(null)
-        return
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        const chosen = results[zettelSearch.selected]
-        if (chosen) {
-          const selStart = e.target.selectionStart
-          const before = e.target.value.slice(0, selStart)
-          const lastOpen = before.lastIndexOf('[[')
-          const startStr = e.target.value.slice(0, lastOpen)
-          const endStr = e.target.value.slice(selStart)
+    // The [[ paper picker's keys. Retired: [[...]] is a card tag, not a link to a paper (2026-10-24).
+    // if (zettelSearch && zettelSearch.index === index) {
+    //   const results = papers.filter(p => p.title.toLowerCase().includes(zettelSearch.query.toLowerCase()))
+    //   if (e.key === 'ArrowDown') {
+    //     e.preventDefault()
+    //     setZettelSearch(prev => ({ ...prev, selected: Math.min(prev.selected + 1, results.length - 1) }))
+    //     return
+    //   }
+    //   if (e.key === 'ArrowUp') {
+    //     e.preventDefault()
+    //     setZettelSearch(prev => ({ ...prev, selected: Math.max(prev.selected - 1, 0) }))
+    //     return
+    //   }
+    //   if (e.key === 'Escape') {
+    //     e.preventDefault()
+    //     setZettelSearch(null)
+    //     return
+    //   }
+    //   if (e.key === 'Enter') {
+    //     e.preventDefault()
+    //     const chosen = results[zettelSearch.selected]
+    //     if (chosen) {
+    //       const selStart = e.target.selectionStart
+    //       const before = e.target.value.slice(0, selStart)
+    //       const lastOpen = before.lastIndexOf('[[')
+    //       const startStr = e.target.value.slice(0, lastOpen)
+    //       const endStr = e.target.value.slice(selStart)
           
-          const finalVal = startStr + `[[${chosen.title}]]` + endStr
-          lines[index] = mergeEditedWithApSuffix(leadingSpaces + finalVal, currentLine)
-          onChange(lines.join('\n'))
+    //       const finalVal = startStr + `[[${chosen.title}]]` + endStr
+    //       lines[index] = mergeEditedWithApSuffix(leadingSpaces + finalVal, currentLine)
+    //       onChange(lines.join('\n'))
           
-          const nxtPos = startStr.length + 4 + chosen.title.length
-          scheduleRestoreSelection(activeBlockInputRef, nxtPos, nxtPos)
-        }
-        setZettelSearch(null)
-        return
-      }
-    }
+    //       const nxtPos = startStr.length + 4 + chosen.title.length
+    //       scheduleRestoreSelection(activeBlockInputRef, nxtPos, nxtPos)
+    //     }
+    //     setZettelSearch(null)
+    //     return
+    //   }
+    // }
 
     // ── Tables: the textarea holds every row joined by newlines, while
     // lines[index] is only the FIRST row. A caret offset taken from the
@@ -1457,6 +1649,45 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     // in the table's own coordinates, before the generic paths see them.
     const tableBounds = findTableBounds(lines, index)
     const inTable = !!tableBounds && tableBounds.start === index
+
+    // ── Line marks: "uw::3252" or "flag:red", then Space or Return ──────
+    // "uw::3252" (uw being one of the Tag Shortcuts) goes into the line's
+    // hidden <!--uw::...--> comment (merged with any already there), which
+    // tags the line's own card and every card under it at Generate
+    // (qbankTags.js, core/qbank.py). "flag:red"
+    // sets its hidden <!--flag:...-->, which flags them; a card's own flag
+    // beats a heading's ("flag:none" takes it off; cardFlags.js,
+    // core/flags.py). Return then opens the next line as usual. Plain keys
+    // only, nothing selected, on any line of text (takesLineMarks).
+    if ((e.key === ' ' || e.key === 'Enter') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+        && !codeRole && !inTable && !e.nativeEvent?.isComposing
+        && e.target.selectionStart === e.target.selectionEnd
+        && takesLineMarks(actualText, e.target.selectionStart)) {
+      const caret = e.target.selectionStart
+      const textBefore = actualText.slice(0, caret)
+      const qHit = findTagShortcut(textBefore, tagShortcutsRef.current)
+      const fHit = qHit ? null : findFlagShortcut(textBefore)
+      if (qHit || fHit) {
+        e.preventDefault()
+        onHistoryCheckpointRef.current?.()   // first Ctrl+Z brings the word back
+        const mark = (body) => (qHit ? addTagMarks(body, qHit.marks) : setFlagComment(body, String(fHit.flag)))
+        const head = actualText.slice(0, (qHit || fHit).start)
+        const rest = actualText.slice(caret)
+        if (e.key === ' ') {
+          lines[index] = attachApSuffix(mark(leadingSpaces + head + rest), currentApSuf)
+          onChange(lines.join('\n'))
+          scheduleRestoreSelection(activeBlockInputRef, head.length, head.length)
+        } else {
+          // Marks already on the heading stay on it, even if they sat after the caret.
+          const [top, bottom] = keepMarksOnTop(mark(leadingSpaces + head), rest)
+          lines[index] = attachApSuffix(top, currentApSuf)
+          lines.splice(index + 1, 0, leadingSpaces + bottom)
+          onChange(lines.join('\n'))
+          setTimeout(() => setFocusedIndex(index + 1), 10)
+        }
+        return
+      }
+    }
 
     // ── macOS Text Replacements ──────────────────────
     // Space or Return right after a shortcut swaps in its phrase, as macOS
@@ -1609,7 +1840,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         } else {
           // Return: the phrase, then the editor's usual split -- whatever
           // followed the cursor moves onto a new line below.
-          out[0] = currentApSuf ? out[0].replace(/\s+$/, '') + currentApSuf : out[0]
+          out[0] = attachApSuffix(out[0], currentApSuf)
           lines.splice(index, 1, ...out, leadingSpaces + after)
           onChange(lines.join('\n'))
           setTimeout(() => {
@@ -1693,13 +1924,30 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       if (e.shiftKey) return
       e.preventDefault()
       const cursorPos = e.target.selectionStart
-      const before = actualText.slice(0, cursorPos)
-      const after = actualText.slice(cursorPos)
-      const newLineBefore = leadingSpaces + before
-      const newLineAfter = leadingSpaces + after
-      
-      lines[index] = currentApSuf ? newLineBefore.replace(/\s+$/, '') + currentApSuf : newLineBefore
-      lines.splice(index + 1, 0, newLineAfter)
+      // A "+ " list item carries on as another item; Enter on an empty one
+      // ends the list, leaving a plain line where it was.
+      const itemHead = !codeRole && actualText.match(/^\+\s+/)
+      if (itemHead && !actualText.slice(itemHead[0].length).trim()) {
+        lines[index] = attachApSuffix(leadingSpaces, currentApSuf)
+        onChange(lines.join('\n'))
+        focusCaretRef.current = 0
+        return
+      }
+      if (itemHead && cursorPos >= itemHead[0].length) {
+        const [top, bottom] = splitLineKeepingAnchor(leadingSpaces, actualText.slice(0, cursorPos), actualText.slice(cursorPos), currentApSuf)
+        lines[index] = top
+        lines.splice(index + 1, 0, attachApSuffix(leadingSpaces + '+ ' + stripApBlockId(bottom).slice(leadingSpaces.length), extractApBlockSuffix(bottom)))
+        onChange(lines.join('\n'))
+        setTimeout(() => {
+          focusCaretRef.current = 2
+          setFocusedIndex(index + 1)
+        }, 10)
+        return
+      }
+      const [before, after] = keepMarksOnTop(actualText.slice(0, cursorPos), actualText.slice(cursorPos))
+      const [top, bottom] = splitLineKeepingAnchor(leadingSpaces, before, after, currentApSuf)
+      lines[index] = top
+      lines.splice(index + 1, 0, bottom)
       onChange(lines.join('\n'))
       // A newly focused line puts the caret at its end; the text that moved
       // down should have it at its start, where it was.
@@ -1727,7 +1975,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         const joinAt = prevDisplay.length - (prevDisplay.match(/^[ \t]*/) || [''])[0].length
 
         const merged = prevDisplay + actualText
-        lines[index - 1] = suf ? merged.replace(/\s+$/, '') + suf : merged
+        lines[index - 1] = attachApSuffix(merged, suf)
 
         lines.splice(index, 1)
 
@@ -1965,10 +2213,10 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const path = []
     for (let i = first - 1; i >= 0; i--) {
       const lv = levelOf(lines[i])
-      if (lv && (!path.length || lv < path[0].lv)) path.unshift({ lv, t: stripApBlockId(lines[i]).trim().replace(/^#+\s*/, '') })
+      if (lv && (!path.length || lv < path[0].lv)) path.unshift({ lv, t: stripLineMarks(stripApBlockId(lines[i])).trim().replace(/^#+\s*/, '') })
       if (lv === 1) break
     }
-    const text = idx.map((i) => stripApBlockId(lines[i])).filter((l) => l.trim()).join('\n')
+    const text = idx.map((i) => stripLineMarks(stripApBlockId(lines[i]))).filter((l) => l.trim()).join('\n')
     // Cards already written in the same section, so drafts don't repeat them.
     let s0 = first, s1 = last
     while (s0 > 0 && !levelOf(lines[s0])) s0--
@@ -2132,7 +2380,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const url = buildApUrl(targetPaperId, blockId)
     const newBody = `${body.slice(0, from)}[${phrase}](${url})${body.slice(to)}`
     let newLine = spaces + newBody
-    if (apSuffix) newLine = newLine.replace(/\s+$/, '') + apSuffix
+    newLine = attachApSuffix(newLine, apSuffix)
     const withSourceAnchor = ensureApBlockId(newLine)
     lines[index] = withSourceAnchor.line
 
@@ -2329,7 +2577,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const before = actualText.slice(0, target.selStart)
     const after = actualText.slice(target.selEnd)
     const merged = leadingSpaces + before + flat + after
-    lines[i] = apSuf ? merged.replace(/\s+$/, '') + apSuf : merged
+    lines[i] = attachApSuffix(merged, apSuf)
     onChange(lines.join('\n'))
 
     // Cursor offset is into the textarea's value, which has no indent — so the
@@ -2511,7 +2759,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const keep = sorted[0]
     const keepSuf = extractApBlockSuffix(lines[keep] ?? '')
     const merged = sorted.map((i) => stripApBlockId(lines[i] ?? '')).join(' ').replace(/\s+/g, ' ').trim()
-    const mergedLine = keepSuf ? merged.replace(/\s+$/, '') + keepSuf : merged
+    const mergedLine = attachApSuffix(merged, keepSuf)
     const toRemove = sorted.slice(1).sort((a, b) => b - a)
     toRemove.forEach((i) => lines.splice(i, 1))
     lines[keep] = mergedLine
@@ -2605,7 +2853,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
             const after = actualText.slice(selEnd)
             actualText = before + result.markdown + after
 
-            const storeLine = (s) => (apSuffix ? s.replace(/\s+$/, '') + apSuffix : s)
+            const storeLine = (s) => attachApSuffix(s, apSuffix)
             const newLine = tableHead ? actualText : leadingSpaces + actualText
 
             if (tableHead) {
@@ -2692,7 +2940,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
     const lastSegment = linePrefixes[lastK] + pastedLines[lastK] + afterCursor
 
     const newLines = [
-      apSuf ? firstSegment.replace(/\s+$/, '') + apSuf : firstSegment,
+      attachApSuffix(firstSegment, apSuf),
       ...pastedLines.slice(1, -1).map((seg, k) => linePrefixes[k + 1] + seg),
       lastSegment,
     ]
@@ -2746,7 +2994,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       selEnd = input.selectionEnd
     }
 
-    const storeLine = (s) => (apSuffix ? s.replace(/\s+$/, '') + apSuffix : s)
+    const storeLine = (s) => attachApSuffix(s, apSuffix)
 
     const applyWrap = (prefix, suffix, emptyPh) => {
       const r = wrapLineSegment(line, selStart, selEnd, prefix, suffix, emptyPh)
@@ -3041,17 +3289,74 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   }
 
   const allLines = useMemo(() => blocks.map(b => b.line), [blocks])
+
+  // ── Flags and suspension beside the lines ─────────────────────────
+  // The gutter rule takes the color of the heading flag in force on each
+  // line (lineMarks.js). Anki's own state comes from noteStats: a card's
+  // flag, and how many of its cards are suspended. Settings → Card Counts
+  // and Suspended Cards turn the heading chips and the ⓢ / fading off; the
+  // fade itself is --suspended-opacity, set on the page by App.
+  const showCardCounts = settings?.show_heading_card_counts !== false
+  // Settings → AI → Feynman: a heading's last Feynman score after its text.
+  const showFeynmanScores = settings?.feynman_show_scores !== false
+  const showSuspended = settings?.show_suspended_cards !== false
+  const lineFlagList = useMemo(() => lineFlags(allLines), [allLines])
+  // Anki's numbers for a line: its card's note, or for a list (b.list), the
+  // whole list note on the parent and one item's card on an item line.
+  const statsOf = useCallback((b) => {
+    if (!b || !noteStats) return null
+    const isCardType = b.type === 'basic' || b.type === 'reversible' || b.type === 'cloze'
+    if (!isCardType && b.list) {
+      const st = b.list.noteId != null ? noteStats[String(b.list.noteId)] || null : null
+      if (!st || b.list.kind === 'parent') return st
+      return b.list.anchor ? st.items?.[b.list.anchor] || null : null
+    }
+    return b.noteId != null ? noteStats[String(b.noteId)] || null : null
+  }, [noteStats])
+  const headingInfo = useMemo(() => {
+    const suspendedOf = (i) => {
+      const st = statsOf(blocks[i])
+      return st ? { cards: st.cards || 0, suspended: st.suspended_cards || 0 } : null
+    }
+    return new Map(buildOutline(allLines.join('\n'), () => null, suspendedOf).map((h) => [h.index, h]))
+  }, [allLines, blocks, statsOf])
   const showLineNumbers = settings?.show_line_numbers !== false
+  // Settings → Card Type Badges: the Basic / Reversible / Cloze bubble at the
+  // right of each card line (stored as show_card_indicators).
+  const showCardBadges = settings?.show_card_indicators !== false
 
   // ── Weak spots (Settings → Weak-Spot Markers) ──
   // noteStats comes from Anki's review history, keyed by note id; a card
   // line is weak or a leech when its note's status says so.
   const showWeakMarkers = settings?.weak_spot_markers !== false
   const weakOf = useCallback((b) => {
-    if (!showWeakMarkers || b?.noteId == null || !noteStats) return null
-    const st = noteStats[String(b.noteId)]
+    if (!showWeakMarkers || !b) return null
+    // A list's parent line isn't marked itself: its weak items are, and its
+    // capsule shows the weakest one.
+    const isCardType = b.type === 'basic' || b.type === 'reversible' || b.type === 'cloze'
+    if (!isCardType && b.list?.kind === 'parent') return null
+    const st = statsOf(b)
     return st && st.status ? st : null
-  }, [showWeakMarkers, noteStats])
+  }, [showWeakMarkers, statsOf])
+
+  // A list parent's capsule: the weakest item, how many items carry each
+  // flag, and how many are suspended -- Anki's numbers once the list is in
+  // Anki, the paper's own flags until then. Packed into a string for Block.
+  const listSummaryOf = useCallback((b, st) => {
+    const counts = new Map()
+    if (st && Array.isArray(st.flags)) {
+      for (const f of st.flags) if (f) counts.set(f, (counts.get(f) || 0) + 1)
+    } else {
+      for (const j of b.list?.items || []) {
+        const f = lineFlagList[j] || 0
+        if (f) counts.set(f, (counts.get(f) || 0) + 1)
+      }
+    }
+    const flags = [...counts].sort((x, y) => x[0] - y[0]).map(([f, n]) => `${f}:${n}`).join(',')
+    const weak = showWeakMarkers && st?.status ? st : null
+    const suspended = showSuspended && st ? st.suspended_cards || 0 : 0
+    return [weak ? weak.status : '', weak ? weak.lapses || 0 : 0, suspended, st?.cards || 0, flags].join('|')
+  }, [lineFlagList, showWeakMarkers, showSuspended])
 
   // "Weak lines only" (the bottom-bar button): weak lines plus the headings
   // they sit under, whatever is folded. null when the filter is off.
@@ -3069,6 +3374,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
       if (weakOf(b)) {
         visible.add(i)
         path.forEach((h) => visible.add(h.index))
+        // A weak list item keeps its prompt in view.
+        if (b.list?.kind === 'item') visible.add(b.list.parent)
       }
     })
     return visible
@@ -3168,16 +3475,34 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         // even inside folded sections); otherwise folding does.
         const hidden = weakVisible ? !weakVisible.has(i) : b.isHidden
         const weak = weakOf(b)
+        const isCard = displayType === 'basic' || displayType === 'reversible' || displayType === 'cloze'
+        const isItem = !b.code && b.list?.kind === 'item'
+        const isListParent = !isCard && !b.code && b.list?.kind === 'parent'
+        const st = isCard || isItem ? statsOf(b) : null
+        const lineFlag = lineFlagList[i] || 0
+        // The capsule's flag: what Anki has once the card is there (a flag
+        // cleared in Anki shows as cleared), the paper's own until then.
+        const cardFlag = !(isCard || isItem) ? 0 : st ? ankiFlagOf(st.flags) : lineFlag
+        const suspendedCards = showSuspended && st ? (st.suspended_cards || 0) : 0
+        const listSummary = isListParent ? listSummaryOf(b, statsOf(b)) : ''
+        const head = headingInfo.get(i)
+        const feynman = showFeynmanScores && displayType === 'heading' ? readFeynman(b.line) : null
+        const headSus = showSuspended && head
+          ? (head.allSuspended ? 'All suspended' : head.suspended ? `${head.suspended} of ${head.cards} suspended` : '')
+          : ''
         return (
           <div key={b.id} data-line={i}
-            className={`block-row-wrapper ${hidden ? 'block-row-hidden' : 'stagger-in'}`}
+            className={`block-row-wrapper ${hidden ? 'block-row-hidden' : 'stagger-in'}${suspendedCards ? ' is-suspended' : ''}${feynmanTopic === i ? ' is-feynman-topic' : ''}`}
             style={{ animationDelay: `${staggerDelays.get(b.id) ?? 0}ms` }}
             onMouseEnter={(e) => scheduleHover(i, e.currentTarget)}
             onMouseLeave={leaveHover}>
             <div className="block-row-inner">
               {/* The line's real number in the paper (Source view counts the
                   same way), so folded sections leave a gap. */}
-              {showLineNumbers && <div className="block-line-number" aria-hidden="true">{i + 1}</div>}
+              {showLineNumbers && (
+                <div className={`block-line-number${lineFlag ? ' has-flag' : ''}`} aria-hidden="true"
+                  style={lineFlag ? { '--line-flag': `var(--flag-${lineFlag})` } : undefined}>{i + 1}</div>
+              )}
               <Block
                 blockId={b.id}
                 line={displayLine}
@@ -3192,7 +3517,7 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 mediaDir={mediaDir}
                 onImageResize={handleImageResize}
                 onTableResize={handleTableResize}
-                noteId={(displayType === 'basic' || displayType === 'reversible' || displayType === 'cloze') ? b.noteId : null}
+                noteId={isCard ? b.noteId : isItem ? b.list.noteId : null}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
@@ -3205,22 +3530,34 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 isCollapsed={collapsedIds.has(b.id)}
                 onToggleCollapse={toggleCollapse}
                 blockKey={b.id}
-                onZettelSearch={handleZettelSearch}
+                /* onZettelSearch={handleZettelSearch}  retired with the [[...]] paper links */
                 weakStatus={weak?.status || null}
                 weakLapses={weak?.lapses || 0}
                 occlusionCards={displayType === 'image' ? (occlusions[mediaImageName(displayLine)]?.cards || 0) : 0}
                 onOpenOcclusion={openOcclusion}
+                ankiFlag={cardFlag}
+                suspendedCards={suspendedCards}
+                cardCount={st?.cards || 0}
+                listSummary={listSummary}
+                listCount={b.listCount || 0}
+                listNoteId={b.listNoteId || null}
+                headCards={showCardCounts && head ? head.cards : 0}
+                headSus={headSus}
+                feynmanScore={feynman ? feynman.score : null}
+                feynmanTip={feynman ? feynmanTip(feynman) : ''}
+                showType={showCardBadges}
                 onCreateOcclusion={createOcclusionFor}
                 codeInfo={b.code || null}
                 codeActive={!!b.code && focusedIndex !== null && focusedIndex >= b.code.open && focusedIndex <= b.code.close}
               />
+              {/* Retired with the [[...]] paper links:
               {zettelSearch?.index === i && (
-                 <ZettelkastenSearch 
-                    query={zettelSearch.query} 
-                    selected={zettelSearch.selected} 
-                    papers={papers} 
+                 <ZettelkastenSearch
+                    query={zettelSearch.query}
+                    selected={zettelSearch.selected}
+                    papers={papers}
                  />
-              )}
+              )} */}
             </div>
             {draftGroup && draftBoxRow === i && (
               <DraftGroup group={draftGroup} settings={settings}
