@@ -36,6 +36,8 @@ import { sourceKey } from './sourceKeys'
 import ChapterStrip from './components/ChapterStrip'
 import FolderSourceDialog from './components/FolderSourceDialog'
 import AskPanel from './components/AskPanel'
+import FeynmanPanel from './components/FeynmanPanel'
+import { setFeynmanMarks, feynmanDateStamp } from './feynman'
 import {
   srcForPaper, srcAttachPaperFile, srcAttachPaperWeb, srcDetachPaper, srcCreateChapterPaper,
   srcFoldersSummary, srcFolderAttachFile, srcFolderDetach,
@@ -625,6 +627,8 @@ export default function App() {
   const [linkRequest, setLinkRequest] = useState(null)
   const [showLinksPanel, setShowLinksPanel] = useState(false)
   const [showAskPanel, setShowAskPanel] = useState(false)
+  const [showFeynman, setShowFeynman] = useState(false)
+  const [feynmanTopic, setFeynmanTopic] = useState(null) // heading line the Feynman panel is on
   const [showGraph, setShowGraph] = useState(false)
 
   // ─── Web browser ─────────────────────────────────
@@ -1598,6 +1602,16 @@ export default function App() {
     blockEditorRef.current.insertLinesAfter(anchor.anchorId, [`&& ${text.replace(/\s*\n+\s*/g, ' ')}`])
     showToast('Added as an && supplement', 'success')
   }, [answerAnchor])
+  // Next topic in the Feynman panel: the session's date and score go onto
+  // the heading line as hidden marks (feynman.js), replacing the last ones.
+  const handleFeynmanSave = useCallback((lineIndex, score) => {
+    const p = paperRef.current
+    if (!p) return
+    const lines = (p.content || '').split('\n')
+    if (!/^\s*#{1,6}\s/.test(lines[lineIndex] || '')) return
+    lines[lineIndex] = setFeynmanMarks(lines[lineIndex], feynmanDateStamp(), score)
+    handleContentChange(lines.join('\n'))
+  }, [handleContentChange])
   const handleDraftFromAnswer = useCallback((text, lineIndex) => {
     const anchor = answerAnchor(lineIndex)
     if (!anchor || !text) return
@@ -1764,6 +1778,9 @@ export default function App() {
   // ─── Render ──────────────────────────────────────
   const aiOn = settings?.ai_enabled !== false
   aiOnRef.current = aiOn
+  // Settings → AI → Feynman panel puts the F in the toolbar (off by default).
+  const feynmanOn = aiOn && settings?.feynman_enabled === true
+  const feynmanOpen = feynmanOn && showFeynman
   const draftGroup = paper ? drafts.groupFor(paper.id) : null
   const saved = savedRef.current
   const paperDirty = !!paper && saved.id === paper.id &&
@@ -1847,6 +1864,8 @@ export default function App() {
               sourceCount={sourcesList.length}
               showAskPanel={showAskPanel}
               onToggleAsk={() => setShowAskPanel((v) => !v)}
+              showFeynman={feynmanOpen}
+              onToggleFeynman={feynmanOn ? () => setShowFeynman((v) => !v) : null}
               showWebBrowser={showWebBrowser}
               onToggleWebBrowser={toggleWebBrowser}
               scrollable={!!settings?.toolbar_scroll}
@@ -1899,6 +1918,7 @@ export default function App() {
                   onDraftRedraft={() => drafts.redraft(paper.id)}
                   onDraftCancel={() => drafts.cancel(paper.id)}
                   onOpenAiSettings={openAiSettings}
+                  feynmanTopic={feynmanOpen ? feynmanTopic : null}
                 />
               )}
             </div>
@@ -1951,6 +1971,18 @@ export default function App() {
           onGoToLine={(i) => handleGoToLine(paper.id, i)}
           onOpenSourceAt={handleOpenSourceAt}
           onNotify={(m) => showToast(m, 'success')}
+        />
+      )}
+      {feynmanOpen && paper && (
+        <FeynmanPanel
+          key={paper.id}
+          paper={paper}
+          outline={outline}
+          visibleLine={visibleLine}
+          onClose={() => setShowFeynman(false)}
+          onSelectTopic={setFeynmanTopic}
+          onSaveScore={handleFeynmanSave}
+          onGoToLine={(i) => handleGoToLine(paper.id, i, { align: 'start' })}
         />
       )}
       {showSourcePanel && paper && (

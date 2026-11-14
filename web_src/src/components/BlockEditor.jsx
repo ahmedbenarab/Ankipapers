@@ -45,10 +45,11 @@ import {
   isFenceCloseLine,
   arrowsFromSpaces,
 } from '../codeBlocks'
-import { stripTagMarks, findTagShortcut, addTagMarks, tagMarksIn, DEFAULT_SHORTCUTS } from '../qbankTags'
+import { stripTagMarks, findTagShortcut, addTagMarks, tagMarksIn, otherMarkComments, DEFAULT_SHORTCUTS } from '../qbankTags'
 import { stripFlagComments, findFlagShortcut, setFlagComment, flagWordIn, FLAG_NAMES } from '../cardFlags'
 import { lineFlags, ankiFlagOf, takesLineMarks } from '../lineMarks'
 import { buildOutline } from '../outline'
+import { readFeynman, feynmanTip } from '../feynman'
 
 /** A line's text without its hidden marks (question ids, flag). */
 function stripLineMarks(text) {
@@ -63,8 +64,10 @@ function stripLineMarks(text) {
 function keepMarksOnTop(before, after) {
   const marks = tagMarksIn(after)
   const flag = flagWordIn(after)
-  if (!before.trim() || (!marks.length && !flag)) return [before, after]
+  const feynman = otherMarkComments(after) // a heading's last Feynman session
+  if (!before.trim() || (!marks.length && !flag && !feynman)) return [before, after]
   let top = marks.length ? addTagMarks(before, marks) : before
+  if (feynman) top = top.replace(/\s+$/, '') + feynman
   if (flag) top = setFlagComment(top, flag)
   return [top, stripLineMarks(after)]
 }
@@ -420,7 +423,7 @@ function ListSeg({ count }) {
   )
 }
 
-function RenderBlockInner({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '', showType = true, listCount = 0 }) {
+function RenderBlockInner({ line, type, mediaDir, onResize, onTableResize, noteId, weakStatus, weakLapses, occlusionCards = 0, onOpenOcclusion, onCreateOcclusion, ankiFlag = 0, suspendedCards = 0, cardCount = 0, headCards = 0, headSus = '', feynmanScore = null, feynmanTip: fTip = '', showType = true, listCount = 0 }) {
   const isCard = type === 'basic' || type === 'reversible' || type === 'cloze'
   const raw = stripApBlockId(line).trim()
   const noHeading = (isCard || listCount > 0) && NH_RE.test(raw)
@@ -445,15 +448,22 @@ function RenderBlockInner({ line, type, mediaDir, onResize, onTableResize, noteI
     const m = t.match(/^(#{1,6})\s+(.+)$/)
     const level = m[1].length
     const Tag = `h${level}`
+    // The last Feynman score, faint, straight after the text; the date is in
+    // its tooltip (feynman.js).
+    let html = formatInlineProp(m[2], mediaDir)
+    if (feynmanScore != null) {
+      const tip = String(fTip).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+      html = { __html: `${html.__html}<span class="heading-feynman" data-tip="${tip}">${Number(feynmanScore)}%</span>` }
+    }
     if (!headCards && !headSus) {
-      return <Tag className={`block-heading block-h${level}`} dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
+      return <Tag className={`block-heading block-h${level}`} dangerouslySetInnerHTML={html} />
     }
     // H1–H3: how many card lines sit under the heading (the Outline's count)
     // and how many are suspended, at the right edge (Settings → Card Counts,
     // Suspended Cards).
     return (
       <div className="block-heading-wrap">
-        <Tag className={`block-heading block-h${level} has-meta`} dangerouslySetInnerHTML={formatInlineProp(m[2], mediaDir)} />
+        <Tag className={`block-heading block-h${level} has-meta`} dangerouslySetInnerHTML={html} />
         <span className="heading-meta">
           {headSus && <span className="heading-suspended">ⓢ {headSus}</span>}
           {headCards > 0 && (
@@ -913,6 +923,8 @@ const Block = React.memo(function Block({
   cardCount = 0,
   headCards = 0,
   headSus = '',
+  feynmanScore = null,
+  feynmanTip: feynmanTipText = '',
   showType = true,
   onCreateOcclusion,
 }) {
@@ -1064,7 +1076,7 @@ const Block = React.memo(function Block({
         ) : codeInfo ? (
           <CodeRow type={type} info={codeInfo} active={codeActive} text={actualText} depth={codeSplit ? codeSplit.depth : 0} />
         ) : (
-          <RenderBlock line={stripLineMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} showType={showType} listCount={listCount} listNoteId={listNoteId} listSummary={listSummary} />
+          <RenderBlock line={stripLineMarks(actualText)} type={type} mediaDir={mediaDir} onResize={(w) => onImageResize(blockId, w)} onTableResize={(sz) => onTableResize?.(blockId, sz)} noteId={noteId} weakStatus={weakStatus} weakLapses={weakLapses} occlusionCards={occlusionCards} onOpenOcclusion={onOpenOcclusion} onCreateOcclusion={onCreateOcclusion} ankiFlag={ankiFlag} suspendedCards={suspendedCards} cardCount={cardCount} headCards={headCards} headSus={headSus} feynmanScore={feynmanScore} feynmanTip={feynmanTipText} showType={showType} listCount={listCount} listNoteId={listNoteId} listSummary={listSummary} />
         )}
       </div>
     </div>
@@ -1109,7 +1121,7 @@ function draftPlacement(lines, at) {
 }
 
 // ─── Block Editor ───────────────────────────────────
-const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, onChange, onCardCountChange, settings, mediaDir, cardRefs, onTableEditRequest, onGoToSource, onOpenDocLink, onRequestCreateLink, onNotify, papers = [], textReplacements = null, onHistoryCheckpoint, noteStats = null, weakOnly = false, onUnsuspendNote, onVisibleLineChange, draftGroup = null, onRequestDraft, onDraftAccept, onDraftDiscard, onDraftRedo, onDraftEdit, onDraftRedraft, onDraftCancel, onOpenAiSettings }, ref) {
+const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, onChange, onCardCountChange, settings, mediaDir, cardRefs, onTableEditRequest, onGoToSource, onOpenDocLink, onRequestCreateLink, onNotify, papers = [], textReplacements = null, onHistoryCheckpoint, noteStats = null, weakOnly = false, onUnsuspendNote, onVisibleLineChange, draftGroup = null, onRequestDraft, onDraftAccept, onDraftDiscard, onDraftRedo, onDraftEdit, onDraftRedraft, onDraftCancel, onOpenAiSettings, feynmanTopic = null }, ref) {
   const [focusedIndex, setFocusedIndex] = useState(null)
   const [selectedIndices, setSelectedIndices] = useState(() => new Set())
   const [selectionAnchor, setSelectionAnchor] = useState(null)
@@ -3285,6 +3297,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
   // and Suspended Cards turn the heading chips and the ⓢ / fading off; the
   // fade itself is --suspended-opacity, set on the page by App.
   const showCardCounts = settings?.show_heading_card_counts !== false
+  // Settings → AI → Feynman: a heading's last Feynman score after its text.
+  const showFeynmanScores = settings?.feynman_show_scores !== false
   const showSuspended = settings?.show_suspended_cards !== false
   const lineFlagList = useMemo(() => lineFlags(allLines), [allLines])
   // Anki's numbers for a line: its card's note, or for a list (b.list), the
@@ -3472,12 +3486,13 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
         const suspendedCards = showSuspended && st ? (st.suspended_cards || 0) : 0
         const listSummary = isListParent ? listSummaryOf(b, statsOf(b)) : ''
         const head = headingInfo.get(i)
+        const feynman = showFeynmanScores && displayType === 'heading' ? readFeynman(b.line) : null
         const headSus = showSuspended && head
           ? (head.allSuspended ? 'All suspended' : head.suspended ? `${head.suspended} of ${head.cards} suspended` : '')
           : ''
         return (
           <div key={b.id} data-line={i}
-            className={`block-row-wrapper ${hidden ? 'block-row-hidden' : 'stagger-in'}${suspendedCards ? ' is-suspended' : ''}`}
+            className={`block-row-wrapper ${hidden ? 'block-row-hidden' : 'stagger-in'}${suspendedCards ? ' is-suspended' : ''}${feynmanTopic === i ? ' is-feynman-topic' : ''}`}
             style={{ animationDelay: `${staggerDelays.get(b.id) ?? 0}ms` }}
             onMouseEnter={(e) => scheduleHover(i, e.currentTarget)}
             onMouseLeave={leaveHover}>
@@ -3528,6 +3543,8 @@ const BlockEditor = forwardRef(function BlockEditor({ paperId = null, content, o
                 listNoteId={b.listNoteId || null}
                 headCards={showCardCounts && head ? head.cards : 0}
                 headSus={headSus}
+                feynmanScore={feynman ? feynman.score : null}
+                feynmanTip={feynman ? feynmanTip(feynman) : ''}
                 showType={showCardBadges}
                 onCreateOcclusion={createOcclusionFor}
                 codeInfo={b.code || null}

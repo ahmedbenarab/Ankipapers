@@ -18,7 +18,9 @@ and Generate names the lines that use it.
 
 The table is one-to-one both ways: no shortcut twice, no tag twice, and no
 tag nested inside another (UWorld and UWorld::ABIM could both make the same
-tag). Capitals don't count, as in Anki. flag, ap and nh are taken.
+tag). Capitals don't count, as in Anki. flag, ap and nh are taken, and so are
+LastFeynmanDate and LastFeynmanScore, the marks a Feynman session leaves on a
+heading (core/feynman.py): they tag nothing.
 
 A paper or folder may give a shortcut its own tag (an override): the paper's
 own first, then the nearest folder's, then Settings. Each row and each
@@ -39,7 +41,10 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 DEFAULT_SHORTCUT = "uw"
 DEFAULT_PREFIX = "UWorldABIM"
-RESERVED_SHORTCUTS = ("flag", "ap", "nh")
+RESERVED_SHORTCUTS = ("flag", "ap", "nh", "lastfeynmandate", "lastfeynmanscore")
+# Marks of the same shape that aren't question tags: a heading's last Feynman
+# session (core/feynman.py). They tag nothing and are never "unknown".
+NOT_TAG_MARKS = ("lastfeynmandate", "lastfeynmanscore")
 
 # <!--uw::3252,4410--> anywhere on a line; values separated by commas or spaces.
 TAG_MARK_RE = re.compile(r"<!--([A-Za-z][A-Za-z0-9_]*)::([^>]*?)-->")
@@ -60,6 +65,8 @@ def tag_marks_in(line: str) -> List[str]:
     seen = set()
     for m in TAG_MARK_RE.finditer(line or ""):
         shortcut = m.group(1).lower()
+        if shortcut in NOT_TAG_MARKS:
+            continue
         for value in _VALUE_RE.findall(m.group(2)):
             value = value.strip(":")
             mark = f"{shortcut}::{value}"
@@ -185,7 +192,7 @@ def table_problem(rows: List[Dict]) -> Optional[str]:
         if not SHORTCUT_RE.match(sc):
             return f"“{sc}” can't be a shortcut: use letters, digits and _, starting with a letter."
         if sc.lower() in RESERVED_SHORTCUTS:
-            return f"“{sc}” is taken: flag, ap and nh already mean something in a paper."
+            return f"“{sc}” is taken: flag, ap, nh, LastFeynmanDate and LastFeynmanScore already mean something in a paper."
         if re.match(r"^c\d+$", sc, re.IGNORECASE):
             return f"“{sc}” is taken: {{{{{sc}::…}}}} is a cloze."
         if sc.lower() in seen:

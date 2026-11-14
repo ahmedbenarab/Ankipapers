@@ -91,6 +91,13 @@ class AnkiPapersWindow(QMainWindow):
             # handler must never stop the window from opening.
             pass
 
+        # The Feynman panel records from the microphone (getUserMedia). Qt
+        # turns every such request down unless the page's owner grants it.
+        try:
+            self.webview.page().permissionRequested.connect(self._on_permission_requested)
+        except Exception:
+            pass
+
         # Configure web settings
         settings = self.webview.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
@@ -156,6 +163,20 @@ class AnkiPapersWindow(QMainWindow):
             self.webview.eval(
                 "window.ankiPapersSetWebBrowserOpen && window.ankiPapersSetWebBrowserOpen(false)"
             )
+        except Exception:
+            pass
+
+    def _on_permission_requested(self, permission):
+        """Microphone only, and only for our own page on Anki's local server
+        (Anki itself already asks macOS for the microphone, for recording
+        your voice in review). Anything else is left alone, as before."""
+        try:
+            from aqt.qt import QWebEnginePermission
+            kind = permission.permissionType()
+            host = permission.origin().host()
+            if (kind == QWebEnginePermission.PermissionType.MediaAudioCapture
+                    and host in ("127.0.0.1", "localhost")):
+                permission.grant()
         except Exception:
             pass
 

@@ -31,6 +31,7 @@ from ..core.share import build_share, is_share, read_share, plan_import
 from .text_replacements import get_text_replacements
 from .ai_sources import AISourcesMixin
 from .occlusion import OcclusionMixin
+from .feynman import FeynmanMixin
 from ..core.search_query import search_papers_advanced
 from ..core.storage import (
     save_paper,
@@ -121,7 +122,7 @@ def _select_note_card_in_browser_table(browser, note_id: int) -> dict:
     return out
 
 
-class AnkiPapersBridge(AISourcesMixin, OcclusionMixin):
+class AnkiPapersBridge(AISourcesMixin, OcclusionMixin, FeynmanMixin):
     """Bridge object exposed to JavaScript via AnkiWebView's pycmd() channel."""
 
     def __init__(self, window=None):
@@ -182,6 +183,7 @@ class AnkiPapersBridge(AISourcesMixin, OcclusionMixin):
         }
         self._dispatch.update(self._ai_sources_dispatch())
         self._dispatch.update(self._occlusion_dispatch())
+        self._dispatch.update(self._feynman_dispatch())
 
     def handle(self, cmd: str):
         """Entry point wired to AnkiWebView.set_bridge_command().

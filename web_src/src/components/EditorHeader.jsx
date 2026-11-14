@@ -28,7 +28,7 @@ function PdfIcon({ size = 16 }) {
 // buttons on the left (the deck picker stretches to fill the row), view
 // mode / import-export / panel toggles pinned to the right. The paper is
 // renamed from its tab (right-click → Rename), not from here.
-export default function EditorHeader({ canBack, canForward, onBack, onForward, deckName, decks, viewMode, showSourcePanel, showLinksPanel, onFormat, onDeckChange, onViewChange, onToggleSource, onToggleLinks, onExportPdf, onExportMarkdown, onImportMarkdown, onShare, aiEnabled = true, onDraftCards, showAskPanel, onToggleAsk, showWebBrowser = false, onToggleWebBrowser, sourceCount = 0, scrollable = false, chapterBar = null }) {
+export default function EditorHeader({ canBack, canForward, onBack, onForward, deckName, decks, viewMode, showSourcePanel, showLinksPanel, onFormat, onDeckChange, onViewChange, onToggleSource, onToggleLinks, onExportPdf, onExportMarkdown, onImportMarkdown, onShare, aiEnabled = true, onDraftCards, showAskPanel, onToggleAsk, showWebBrowser = false, onToggleWebBrowser, sourceCount = 0, scrollable = false, chapterBar = null, showFeynman = false, onToggleFeynman = null }) {
   // Settings → Toolbar → Scroll sideways: one row that scrolls instead of
   // wrapping. A mouse wheel scrolls it too, like the tab strip.
   const barRef = useRef(null)
@@ -147,6 +147,19 @@ export default function EditorHeader({ canBack, canForward, onBack, onForward, d
             onClick={onToggleAsk}
           >
             <MessageCircle size={16} />
+          </button>
+        )}
+
+        {/* Settings → AI → Feynman panel: off by default, so the F is only
+            here once it's turned on. */}
+        {aiEnabled && onToggleFeynman && (
+          <button
+            className={`header-icon-btn header-feynman-btn ${showFeynman ? 'active' : ''}`}
+            title={showFeynman ? 'Close the Feynman panel' : 'Feynman: explain a heading out loud and see how much of it you covered'}
+            aria-label="Feynman"
+            onClick={onToggleFeynman}
+          >
+            F
           </button>
         )}
 

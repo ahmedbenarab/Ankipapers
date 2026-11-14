@@ -480,7 +480,7 @@ function createMockBridge() {
     get_settings: () => ({
       default_deck: 'Default', auto_save_interval_seconds: 30, font_size: 14,
       font_family: 'JetBrains Mono', editor_theme: 'dark', show_card_indicators: true, show_heading_card_counts: true, show_suspended_cards: true, suspended_card_opacity: 85, show_line_numbers: true, color_scheme: 'carolina', weak_spot_markers: true,
-      anki_edit_conflict: 'ask',
+      anki_edit_conflict: 'ask', ai_enabled: true, feynman_enabled: true, feynman_show_scores: true, feynman_provider: 'gemini',
       tag_shortcuts: [{ shortcut: 'uw', tag: 'UWorldABIM', old: [] }, { shortcut: 'ab', tag: 'AMBOSS', old: [] }],
     }),
     // Mirrors gui/bridge.py: a changed card_style reports it was applied.

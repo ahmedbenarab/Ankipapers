@@ -12,7 +12,15 @@
 
 export const TAG_MARK_RE = /<!--([A-Za-z][A-Za-z0-9_]*)::([^>]*?)-->/g
 export const SHORTCUT_RE = /^[A-Za-z][A-Za-z0-9_]*$/
-export const RESERVED_SHORTCUTS = ['flag', 'ap', 'nh']
+export const RESERVED_SHORTCUTS = ['flag', 'ap', 'nh', 'lastfeynmandate', 'lastfeynmanscore']
+// Same shape, not question tags: a heading's last Feynman session (feynman.js).
+export const NOT_TAG_MARKS = ['lastfeynmandate', 'lastfeynmanscore']
+const NOT_TAG_MARK_RE = /<!--(?:LastFeynmanDate|LastFeynmanScore)::[^>]*?-->/gi
+
+/** The line's Feynman comments as written, so code that rewrites its tag marks can keep them. */
+export function otherMarkComments(text) {
+  return (String(text ?? '').match(NOT_TAG_MARK_RE) || []).join('')
+}
 export const DEFAULT_SHORTCUTS = [{ shortcut: 'uw', tag: 'UWorldABIM', old: [] }]
 
 /** The text with its <!--shortcut::...--> comments taken out. */
@@ -26,6 +34,7 @@ export function tagMarksIn(text) {
   const seen = new Set()
   for (const m of String(text ?? '').matchAll(TAG_MARK_RE)) {
     const shortcut = m[1].toLowerCase()
+    if (NOT_TAG_MARKS.includes(shortcut)) continue
     for (let value of m[2].match(/[^\s,]+/g) || []) {
       value = value.replace(/^:+|:+$/g, '')
       const mark = `${shortcut}::${value}`
@@ -74,7 +83,7 @@ export function addTagMarks(body, marks) {
     groups.get(sc).push(mark.slice(i + 2))
   }
   const comments = [...groups].map(([sc, values]) => `<!--${sc}::${values.join(',')}-->`).join('')
-  return stripTagMarks(body).replace(/\s+$/, '') + comments
+  return stripTagMarks(body).replace(/\s+$/, '') + comments + otherMarkComments(body)
 }
 
 // ── The Tag Shortcuts table (mirrors core/qbank.py) ─────────────────────
@@ -98,7 +107,7 @@ export function shortcutTableProblem(rows) {
     const tag = cleanTag(r?.tag)
     if (!sc) return `Row ${n + 1} needs a shortcut.`
     if (!SHORTCUT_RE.test(sc)) return `“${sc}” can't be a shortcut: use letters, digits and _, starting with a letter.`
-    if (RESERVED_SHORTCUTS.includes(sc.toLowerCase())) return `“${sc}” is taken: flag, ap and nh already mean something in a paper.`
+    if (RESERVED_SHORTCUTS.includes(sc.toLowerCase())) return `“${sc}” is taken: flag, ap, nh, LastFeynmanDate and LastFeynmanScore already mean something in a paper.`
     if (/^c\d+$/i.test(sc)) return `“${sc}” is taken: {{${sc}::…}} is a cloze.`
     if (seen.has(sc.toLowerCase())) return `“${sc}” is used twice. Each shortcut can be used only once.`
     if (!tag) return `“${sc}” needs a tag.`

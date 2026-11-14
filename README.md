@@ -41,6 +41,15 @@ Your papers are **plain markdown files on your own disk**, in folders that match
 
 ## What's new
 
+**Feynman: explain a topic out loud and see how much of it you covered.** Turn it on in Settings → AI → Feynman and an **F** joins the toolbar. Click it to open a panel beside your paper.
+- **Pick a topic:** any H1, H2 or H3, from a menu laid out like the Outline. It shows how many answers each section holds and your last score.
+- **Explain it:** press the microphone, talk, press it again. Choose your microphone under the button; a green bar shows it's hearing you.
+- **Listen back, then submit.** Nothing leaves your computer until you press **Submit for grading**.
+- **Graded against your paper only.** Each hidden answer counts once: the back of a basic card, a reversible pair, each cloze deletion, each list item. The score is the answers you described ÷ all of them. The model's own knowledge doesn't count, and your paper wins even where it's wrong. The grading prompt is yours to edit.
+- **Next topic** saves the date and score on the heading, shown faintly after it (hover for the date), and moves on.
+- **Setup:** a Google AI Studio key and one model, `gemini-3.8-flash`, transcribe and grade; Settings → AI → Feynman lists every step. An OpenAI-compatible audio chat model such as `gpt-audio-1.5` works too. Claude and DeepSeek can't take audio, so Feynman has its own provider, apart from the one for drafting and Ask.
+- **Windows:** the microphone hasn't been tested there yet.
+
 **List cards: learn things in order, one item at a time.** Write a line, then indent `+` items under it. The line becomes one list card, and each item is its own Anki card with its own schedule, much like RemNote's list-answer cards. In review the prompt stays on screen: Space shows the next item, you rate it, and the next one comes up until the list is done. See [List cards](#list-cards--items).
 - **In order, on one screen.** Whichever item Anki offers, the review starts at the first one that's due and walks down the list. Items that aren't due are skipped but stay visible as context, labelled "not due". The items you've rated show their ratings.
 - **Each item is its own card.** Forgetting item 3 doesn't reset items 1 and 2. Reword, reorder, insert or delete items and each one keeps its own review history.

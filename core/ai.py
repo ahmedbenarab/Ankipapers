@@ -43,7 +43,7 @@ DEEPSEEK_URL = "https://api.deepseek.com"
 
 DEFAULT_MODELS = {
     "anthropic": "claude-opus-5-5",
-    "gemini": "",
+    "gemini": "gemini-3.8-flash",
     "deepseek": "deepseek-chat",
     "openai": "",
 }

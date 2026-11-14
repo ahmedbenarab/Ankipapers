@@ -1215,7 +1215,8 @@ textarea.block-input.block-input-textarea {
 .block-h1 strong, .block-h2 strong, .block-h3 strong,
 .block-h4 strong, .block-h5 strong, .block-h6 strong { color: inherit; font-weight: 800; }
 
-.block-paragraph { color: var(--text-secondary); line-height: 1.7; margin: 2px 0; }
+/* Same 4px side padding as card lines, so plain text starts where card text does. */
+.block-paragraph { color: var(--text-secondary); line-height: 1.7; margin: 2px 0; padding: 0 4px; }
 .block-paragraph strong { color: var(--text-primary); font-weight: 700; }
 .block-paragraph em { color: var(--text-primary); opacity: 0.88; font-style: italic; }
 .block-paragraph del { color: var(--text-muted); }
